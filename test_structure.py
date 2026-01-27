@@ -14,9 +14,9 @@ try:
     print("✓ Flask app created successfully")
     
     # Test simulation engine
-    from simulation.engine import SimulationEngine
-    from simulation.plant_profile import PlantProfile
-    from simulation.state import PlantState
+    from models.engine import SimulationEngine
+    from models.plant_profile import PlantProfile
+    from models.state import PlantState
     print("✓ Simulation engine imports successful")
     
     # Test agents

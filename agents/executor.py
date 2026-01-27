@@ -1,6 +1,6 @@
 """Turns decisions into simulation actions"""
 
-from simulation.actions import apply_irrigation, apply_fertilizer, apply_light_control
+from models.actions import apply_irrigation, apply_fertilizer, apply_light_control
 
 class Executor:
     """Agent executor for applying actions"""

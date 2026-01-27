@@ -4,8 +4,8 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from simulation.engine import SimulationEngine
-from simulation.plant_profile import PlantProfile
+from models.engine import SimulationEngine
+from models.plant_profile import PlantProfile
 from data.default_plants import get_plant_profile
 
 def run_simulation(plant_name='tomato', days=30):
