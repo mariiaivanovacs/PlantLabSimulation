@@ -250,6 +250,8 @@ class SimulationEngine:
         for action in to_execute:
             self.apply_tool(action)
             self.scheduled_actions.remove(action)
+            
+            
 
     def _step_one_hour(self, irrigation: float = 0.0) -> None:
         """Run one hourly timestep"""
