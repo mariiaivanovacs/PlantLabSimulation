@@ -88,8 +88,8 @@ def get_tomato_profile() -> PlantProfile:
         ),
         
         growth=GrowthParameters(
-            LUE=0.003,
-            r_base=0.000625,  # 0.015 g/g/day = 0.000625 g/g/h
+            LUE=0.000015,     # FIX: Corrected (0.003 / 200 = 1.5e-05)
+            r_base=0.000026,  # FIX: 1.5% per day / 24 hours = 0.0625% per hour
             max_biomass=500.0,
             leaf_area_ratio=0.004,
             optimal_PAR=600.0,
@@ -123,8 +123,7 @@ def get_tomato_profile() -> PlantProfile:
 
 def get_lettuce_profile() -> PlantProfile:
     """
-    Lettuce plant profile (Lactuca sativa)
-    Fast-growing leafy green
+    Lettuce plant profile (Lactuca sativa) — corrected/default values for butterhead lettuce.
     """
     return PlantProfile(
         profile_id="lettuce_butterhead",
@@ -133,61 +132,62 @@ def get_lettuce_profile() -> PlantProfile:
         description="Fast-growing butterhead lettuce for hydroponic/indoor growing",
         
         temperature=TemperatureResponse(
-            T_min=5.0,
-            T_opt=18.0,
-            T_max=28.0,
-            T_base=5.0
+            T_min=4.0,    # lower threshold for growth
+            T_opt=20.0,   # optimal temperature for lettuce leaves
+            T_max=28.0,   # upper threshold before rapid heat stress
+            T_base=4.0
         ),
         
         water=WaterRequirements(
-            wilting_point=12.0,
-            field_capacity=30.0,
-            saturation=50.0,
-            optimal_range_min=25.0,
-            optimal_range_max=35.0
+            wilting_point=10.0,        # volumetric % or relative scale used by your model
+            field_capacity=45.0,
+            saturation=60.0,
+            optimal_range_min=45.0,   # keep soil/hydro moisture in this comfortable range
+            optimal_range_max=75.0
         ),
         
         nutrients=NutrientDemand(
-            N_ratio=0.04,  # Higher N for leafy greens
-            P_ratio=0.004,
-            K_ratio=0.025,
-            optimal_N=180.0,
+            N_ratio=0.035,  # fraction used in allocation scheme (keeps higher N demand)
+            P_ratio=0.005,
+            K_ratio=0.03,
+            optimal_N=150.0,   # ppm range commonly targeted for lettuce
             optimal_P=40.0,
             optimal_K=200.0
         ),
         
         growth=GrowthParameters(
-            LUE=0.0035,  # Slightly higher efficiency
-            r_base=0.0005,  # Lower respiration
-            max_biomass=150.0,  # Smaller plant
-            leaf_area_ratio=0.006,  # Higher leaf area ratio
-            optimal_PAR=350.0,  # Lower light needs
-            PAR_saturation=800.0
+            LUE=0.000006,     # FIX: Corrected to 6e-06 g/umol (was 197x too high!)
+            r_base=0.000021,  # FIX: 1.2% per day / 24 hours = 0.05% per hour
+            max_biomass=300.0, # genetic potential (fresh mass, g) for a mature head
+            leaf_area_ratio=0.004,  # FIX: Realistic leaf area ratio (m²/g)
+            optimal_PAR=200.0,     # lower light needs (µmol m-2 s-1 scale)
+            PAR_saturation=600.0
         ),
         
         phenology=PhenologyThresholds(
-            seed_to_seedling_GDD=30.0,
+            seed_to_seedling_GDD=50.0,
             seedling_to_vegetative_GDD=200.0,
-            vegetative_to_flowering_GDD=1500.0,  # Typically harvested before flowering
-            flowering_to_fruiting_GDD=2000.0,
-            fruiting_to_mature_GDD=2500.0,
+            vegetative_to_flowering_GDD=2500.0,  # usually harvested before flowering
+            flowering_to_fruiting_GDD=3000.0,
+            fruiting_to_mature_GDD=3500.0,
             seed_to_seedling_biomass=0.05
         ),
         
         optimal_RH_min=60.0,
         optimal_RH_max=80.0,
-        optimal_VPD=0.8,
+        optimal_VPD=0.6,
         optimal_pH_min=5.5,
         optimal_pH_max=6.5,
-        EC_toxicity_threshold=2.5,  # More sensitive to salts
+        EC_toxicity_threshold=1.8,  # lettuce is fairly salt-sensitive; lower threshold
         
-        initial_biomass=0.3,
-        initial_leaf_area=0.0018,
+        initial_biomass=0.05,       # realistic tiny seedling start (g fresh mass)
+        initial_leaf_area=0.0005,   # small starting leaf area
         
         created_at=datetime.now().isoformat(),
         created_by="system",
         is_default=True
     )
+
 
 
 def get_basil_profile() -> PlantProfile:
@@ -226,10 +226,10 @@ def get_basil_profile() -> PlantProfile:
         ),
         
         growth=GrowthParameters(
-            LUE=0.0028,
-            r_base=0.0007,
+            LUE=0.000014,     # FIX: Corrected (0.0028 / 200 = 1.4e-05)
+            r_base=0.000029,  # FIX: 1.7% per day / 24 hours = 0.07% per hour
             max_biomass=100.0,
-            leaf_area_ratio=0.005,
+            leaf_area_ratio=0.004,  # FIX: Realistic leaf area ratio
             optimal_PAR=450.0,
             PAR_saturation=1000.0
         ),

@@ -36,7 +36,9 @@ from physics.growth import (
     calculate_growth,
     update_biomass,
     update_leaf_area,
-    decay_biomass
+    decay_biomass,
+    is_daytime,
+    get_light_factor
 )
 from physics.damage import (
     calculate_damage_rate,
@@ -119,6 +121,13 @@ class SimulationEngine:
 
         # Ventilation state (for CO2 exchange)
         self.ventilation_rate: float = 0.0
+
+        # Daily regime settings
+        self.daily_regime_enabled: bool = True
+        self.watering_hour: int = 7       # Water at 7:00 AM
+        self.ventilation_hour: int = 12   # Ventilate at noon
+        self.daily_water_amount: float = 0.3  # Liters per day
+        self.daily_ventilation_speed: float = 20.0  # Fan speed 0-100%
 
         logger.info(f"Initialized simulation {self.simulation_id} with plant {self.plant_id}")
 
@@ -250,6 +259,72 @@ class SimulationEngine:
         for action in to_execute:
             self.apply_tool(action)
             self.scheduled_actions.remove(action)
+
+    def _execute_daily_regime(self) -> None:
+        """
+        Execute daily automated maintenance regime
+
+        Runs once per day at specified hours:
+        - Watering at watering_hour (default 7:00 AM)
+        - Ventilation at ventilation_hour (default 12:00 noon)
+        """
+        if not self.daily_regime_enabled:
+            return
+
+        hour_of_day = self.state.hour % 24
+
+        # Daily watering
+        if hour_of_day == self.watering_hour:
+            action = ToolAction(
+                tool_type=ToolType.WATERING,
+                parameters={'volume_L': self.daily_water_amount}
+            )
+            result = self.apply_tool(action)
+            logger.info(f"Daily regime - Watering: {result.message}")
+
+        # Daily ventilation
+        if hour_of_day == self.ventilation_hour:
+            action = ToolAction(
+                tool_type=ToolType.VENTILATION,
+                parameters={
+                    'fan_speed': self.daily_ventilation_speed,
+                    'duration_hours': 1
+                }
+            )
+            result = self.apply_tool(action)
+            logger.info(f"Daily regime - Ventilation: {result.message}")
+
+    def set_daily_regime(
+        self,
+        enabled: bool = True,
+        watering_hour: int = 7,
+        ventilation_hour: int = 12,
+        water_amount: float = 0.3,
+        fan_speed: float = 20.0
+    ) -> None:
+        """
+        Configure the daily automated regime
+
+        Args:
+            enabled: Enable/disable daily regime
+            watering_hour: Hour of day to water (0-23)
+            ventilation_hour: Hour of day to ventilate (0-23)
+            water_amount: Amount of water per day (L)
+            fan_speed: Ventilation fan speed (0-100%)
+        """
+        
+        if not enabled:
+            logger.info("Daily regime disabled")
+            return
+        
+        self.daily_regime_enabled = enabled
+        self.watering_hour = watering_hour % 24
+        self.ventilation_hour = ventilation_hour % 24
+        self.daily_water_amount = water_amount
+        self.daily_ventilation_speed = fan_speed
+        logger.info(f"Daily regime {'enabled' if enabled else 'disabled'}: "
+                   f"water at {watering_hour}:00 ({water_amount}L), "
+                   f"ventilate at {ventilation_hour}:00 ({fan_speed}%)")
             
             
 
@@ -257,6 +332,9 @@ class SimulationEngine:
         """Run one hourly timestep"""
         # Execute scheduled actions first
         self._execute_scheduled_actions()
+
+        # Execute daily automated regime (watering, ventilation)
+        self._execute_daily_regime()
 
         if not self.state.is_alive:
             self._handle_dead_plant()
@@ -380,7 +458,18 @@ class SimulationEngine:
         )
 
     def _update_growth(self) -> None:
-        """Calculate and apply growth with CO2 enhancement"""
+        """
+        Calculate and apply growth with CO2 enhancement and day/night cycle
+
+        Day/night cycle:
+        - Photosynthesis only occurs during daylight (6:00-20:00)
+        - Respiration continues 24/7
+        - At night: biomass DECREASES (respiration > photosynthesis)
+        """
+        # Get light factor based on time of day
+        light_factor = get_light_factor(self.state.hour)
+        is_day = is_daytime(self.state.hour)
+
         # Temperature response factor
         f_temp = calculate_temperature_response(
             self.state.air_temp,
@@ -402,44 +491,52 @@ class SimulationEngine:
         # CO2 growth enhancement factor
         f_co2 = calculate_co2_growth_factor(self.state.CO2)
 
-        # Photosynthesis (enhanced by CO2)
+        # Photosynthesis: only during daytime
+        # Apply light factor from day/night cycle
+        effective_PAR = self.state.light_PAR * light_factor
+
+        # FIX: Pass biomass as 2nd parameter (not leaf_area)
+        # Function signature: calculate_photosynthesis(light_PAR, biomass, f_temp, f_nutrient, LUE, leaf_area_ratio)
         base_photosynthesis = calculate_photosynthesis(
-            self.state.light_PAR,
-            self.state.leaf_area,
+            effective_PAR,
+            self.state.biomass,  # Changed: biomass is now 2nd parameter
             f_temp,
             f_nutrient,
-            self.plant_profile.growth.LUE
+            self.plant_profile.growth.LUE,
+            self.plant_profile.growth.leaf_area_ratio
         )
 
-        # Apply CO2 enhancement
+        # Apply CO2 enhancement (only matters during day)
         self.state.photosynthesis = base_photosynthesis * f_co2
 
-        # Respiration
+        # Respiration: continues 24/7 (slightly reduced at night due to lower temp)
+        night_respiration_factor = 0.7 if not is_day else 1.0
         self.state.respiration = calculate_respiration(
             self.state.biomass,
             self.plant_profile.growth.r_base
-        )
+        ) * night_respiration_factor
 
-        # Net growth
+        # Net growth (can be NEGATIVE at night!)
         delta_biomass = calculate_growth(
             self.state.photosynthesis,
             self.state.respiration,
             self.state.water_stress,
-            self.state.cumulative_damage
+            self.state.cumulative_damage,
+            hour=self.state.hour
         )
 
-        # Update biomass
-        self.state.biomass, actual_growth = update_biomass(
+        # Update biomass (handles both growth and loss)
+        self.state.biomass, actual_change = update_biomass(
             self.state.biomass,
             delta_biomass,
             self.plant_profile.growth.max_biomass,
             self.state.cumulative_damage
         )
 
-        # Store growth rate
-        self.state.growth_rate = actual_growth
+        # Store growth rate (can be negative at night)
+        self.state.growth_rate = actual_change
 
-        # Update leaf area
+        # Update leaf area based on current biomass
         self.state.leaf_area = update_leaf_area(
             self.state.biomass,
             self.plant_profile.growth.leaf_area_ratio
