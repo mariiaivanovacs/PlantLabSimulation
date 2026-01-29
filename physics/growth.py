@@ -253,14 +253,21 @@ def calculate_growth(
     R_maint: float,
     water_stress: float,
     cumulative_damage: float,
+    biomass: float = 1.0,
     hour: int = 0
 ) -> float:
     """
     Calculate net biomass growth with stress factors and day/night cycle
 
+    IMPROVED:
+    - Gradual stress accumulation (not instant collapse)
+    - Biomass-dependent respiration increase under stress
+    - Photosynthesis reduction scales with stress severity
+
     Formulas:
     - P_effective = P_gross * (1 - water_stress) * (1 - damage_factor)
-    - net_carbon = P_effective - R_maint
+    - R_stress = R_maint * (1 + stress_respiration_factor)
+    - net_carbon = P_effective - R_stress
     - delta_biomass = net_carbon
 
     IMPORTANT:
@@ -273,6 +280,7 @@ def calculate_growth(
         R_maint: Maintenance respiration this hour (g)
         water_stress: Water stress factor (0-1, where 1 = maximum stress)
         cumulative_damage: Accumulated damage (%)
+        biomass: Current biomass (g) - for biomass-dependent stress
         hour: Current simulation hour (for logging/debugging only)
 
     Returns:
@@ -282,13 +290,36 @@ def calculate_growth(
     damage_factor = 0.01 * cumulative_damage
     damage_factor = min(1.0, max(0, damage_factor))
 
+    # IMPROVED: Gradual photosynthesis reduction under stress
+    # Use exponential decay instead of linear to prevent instant collapse
+    # stress_factor = exp(-2 * water_stress) gives:
+    # - 0% stress → 100% photosynthesis
+    # - 50% stress → 37% photosynthesis
+    # - 100% stress → 14% photosynthesis (not 0%, allows gradual decline)
+    import math
+    stress_photosynthesis_factor = math.exp(-2 * water_stress)
+
     # Effective photosynthesis: reduced by water stress and damage
-    # NOTE: Do NOT apply light_factor here - P_gross already accounts for light!
-    P_effective = P_gross * (1 - water_stress) * (1 - damage_factor)
+    P_effective = P_gross * stress_photosynthesis_factor * (1 - damage_factor)
+
+    # IMPROVED: Biomass-dependent stress respiration
+    # Smaller seedlings lose biomass faster under stress
+    # Larger plants can maintain themselves better
+    if biomass < 1.0:
+        # Small seedlings: 50% increase in respiration under full stress
+        stress_respiration_multiplier = 1.0 + 0.5 * water_stress
+    elif biomass < 10.0:
+        # Medium plants: 30% increase in respiration under full stress
+        stress_respiration_multiplier = 1.0 + 0.3 * water_stress
+    else:
+        # Large plants: 20% increase in respiration under full stress
+        stress_respiration_multiplier = 1.0 + 0.2 * water_stress
+
+    R_stress = R_maint * stress_respiration_multiplier
 
     # Net carbon balance (photosynthesis - respiration)
     # Can be negative at night when P_gross = 0 but R_maint > 0
-    net_carbon = P_effective - R_maint
+    net_carbon = P_effective - R_stress
 
     # Delta biomass equals net carbon (no additional factors)
     delta_biomass = net_carbon
@@ -424,47 +455,107 @@ def calculate_RGR(
     biomass: float,
     delta_biomass: float,
     hour: int,
+    water_stress: float = 0.0,
+    soil_water: float = 35.0,
+    wilting_point: float = 15.0,
+    optimal_min: float = 30.0,
     dt: float = 1.0,
     seedling_boost: float = 0.002,  # g/h, adjustable
-    boost_hours: int = 24,          # apply boost for first 24 hours
+    boost_hours: int = 168,         # apply boost for first 168 hours (7 days)
     boost_biomass_threshold: float = 0.2  # apply boost if biomass below this
 ) -> float:
     """
-    Calculate Relative Growth Rate (RGR) with optional seedling boost.
+    Calculate Relative Growth Rate (RGR) with water stress scaling and seedling boost.
 
     RGR = (1/B) · dB/dt
+
+    IMPROVED:
+    - Water stress scaling applied to RGR (gradual decline, not instant collapse)
+    - Biomass-dependent vulnerability (smaller seedlings more affected)
+    - Seedling boost depends on water availability and decays over time
+    - Can reach 0 or negative RGR early for unwatered seedlings
 
     Args:
         biomass: Current biomass (g)
         delta_biomass: Change in biomass this timestep (g)
         hour: Current simulation hour
+        water_stress: Water stress factor (0-1, where 1 = maximum stress)
+        soil_water: Current soil water content (%)
+        wilting_point: Permanent wilting point (%)
+        optimal_min: Lower bound of optimal range (%)
         dt: Time step (hours, default 1.0)
         seedling_boost: Small biomass added per hour for seedlings (g/h)
-        boost_hours: Number of hours to apply seedling boost
+        boost_hours: Number of hours to apply seedling boost (default 168 = 7 days)
         boost_biomass_threshold: Only apply boost if biomass below this
 
     Returns:
-        RGR in units of 1/hour (per hour)
+        RGR in units of 1/hour (per hour) - can be NEGATIVE
     """
     if biomass <= 0:
         return 0.0
 
-    # Apply seedling boost under defined conditions
+    # Apply seedling boost only when water conditions are favorable
+    # FIXED: Boost now depends on water availability and decays over time
     boost = 0.0
     if hour < boost_hours and biomass < boost_biomass_threshold:
-        boost = seedling_boost
+        # Time decay factor (72-hour half-life)
+        # This simulates depletion of seed energy reserves over time
+        time_factor = math.exp(-hour / 72)
+
+        # Water factor (no boost under stress)
+        # Seedlings can't use energy reserves effectively without water
+        water_factor = max(0, 1 - water_stress)
+
+        # Combined boost
+        boost = seedling_boost * time_factor * water_factor
 
     # Total delta including boost
     total_delta = delta_biomass + boost
 
-    # Calculate RGR
-    RGR = total_delta / dt / biomass
+    # Calculate base RGR
+    RGR_base = total_delta / dt / biomass
+
+    # IMPROVED: Apply water stress scaling to RGR
+    # This creates gradual decline rather than instant collapse
+    # Smaller seedlings are more vulnerable (calculated in water_stress_factor)
+
+    # Calculate biomass-dependent water stress factor
+    if soil_water >= optimal_min:
+        stress_factor = 0.0
+    elif soil_water <= wilting_point:
+        stress_factor = 1.0
+    else:
+        # Base stress from soil water
+        base_stress = (optimal_min - soil_water) / (optimal_min - wilting_point)
+
+        # Biomass vulnerability factor
+        # Smaller seedlings (< 1g) are MORE vulnerable to stress
+        if biomass < 0.5:
+            vulnerability = 2.0  # 2x stress multiplier
+        elif biomass < 1.0:
+            vulnerability = 1.5 + 0.5 * (1.0 - biomass) / 0.5
+        elif biomass < 10.0:
+            vulnerability = 1.0 + 0.5 * (10.0 - biomass) / 9.0
+        else:
+            vulnerability = 1.0  # Baseline
+
+        stress_factor = min(1.0, base_stress * vulnerability)
+
+    # Apply stress scaling to RGR
+    # Use exponential decay for gradual transition
+    # stress_factor = 0 → multiplier = 1.0 (no effect)
+    # stress_factor = 0.5 → multiplier = 0.61 (moderate reduction)
+    # stress_factor = 1.0 → multiplier = 0.37 (severe reduction, but not 0)
+    stress_multiplier = math.exp(-stress_factor)
+
+    # Final RGR with stress scaling
+    RGR_actual = RGR_base * stress_multiplier
 
     # Log for debugging
     with open('data/records/RGR.txt', 'a') as f:
-        f.write(f"{hour}, {biomass}, {delta_biomass}, {boost}, {RGR}\n")
+        f.write(f"{hour}, {biomass}, {delta_biomass}, {boost}, {water_stress}, {stress_factor:.3f}, {stress_multiplier:.3f}, {RGR_actual}\n")
 
-    return RGR
+    return RGR_actual
 
 
 def calculate_doubling_time(RGR: float) -> float:

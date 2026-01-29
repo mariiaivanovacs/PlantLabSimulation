@@ -48,7 +48,8 @@ from physics.damage import (
     calculate_damage_rate,
     apply_damage,
     apply_damage_recovery,
-    check_death
+    check_death,
+    check_death_comprehensive
 )
 from physics.nutrients import (
     calculate_nutrient_uptake,
@@ -127,7 +128,7 @@ class SimulationEngine:
         self.ventilation_rate: float = 0.0
 
         # Daily regime settings
-        self.daily_regime_enabled: bool = True
+        self.daily_regime_enabled: bool = False
         self.watering_hour: int = 7       # Water at 7:00 AM
         self.ventilation_hour: int = 12   # Ventilate at noon
         self.daily_water_amount: float = 0.3  # Liters per day
@@ -182,7 +183,9 @@ class SimulationEngine:
                 self.plant_profile.nutrients.optimal_K
             ),
             soil_pH=6.5,
-            air_temp=self.plant_profile.temperature.T_opt,
+            # air_temp=self.plant_profile.temperature.T_opt,
+            air_temp=28,
+
             relative_humidity=(self.plant_profile.optimal_RH_min + self.plant_profile.optimal_RH_max) / 2,
             VPD=1.0,
             light_PAR=self.plant_profile.growth.optimal_PAR,
@@ -283,14 +286,26 @@ class SimulationEngine:
 
         hour_of_day = self.state.hour % 24
 
-        # Daily watering
+        # Daily watering (adaptive based on plant size)
         if hour_of_day == self.watering_hour:
-            action = ToolAction(
-                tool_type=ToolType.WATERING,
-                parameters={'volume_L': self.daily_water_amount}
+            # Calculate adaptive water amount based on plant size
+            watering_tool = self.tools[ToolType.WATERING]
+            adaptive_amount = watering_tool.calculate_adaptive_water_amount(
+                state=self.state,
+                wilting_point=self.plant_profile.water.wilting_point,
+                optimal_min=self.plant_profile.water.optimal_range_min,
+                field_capacity=self.plant_profile.water.field_capacity
             )
-            result = self.apply_tool(action)
-            logger.info(f"Daily regime - Watering: {result.message}")
+
+            # Only water if adaptive amount > 0
+            if adaptive_amount > 0:
+                action = ToolAction(
+                    tool_type=ToolType.WATERING,
+                    parameters={'volume_L': adaptive_amount}
+                )
+                result = self.apply_tool(action)
+                logger.info(f"Daily regime - Adaptive watering: {result.message} "
+                           f"(biomass: {self.state.biomass:.2f}g, adaptive: {adaptive_amount:.3f}L)")
 
         # Daily ventilation
         if hour_of_day == self.ventilation_hour:
@@ -320,7 +335,7 @@ class SimulationEngine:
 
     def set_daily_regime(
         self,
-        enabled: bool = True,
+        enabled: str = "True",
         watering_hour: int = 7,
         ventilation_hour: int = 12,
         water_amount: float = 0.3,
@@ -341,7 +356,7 @@ class SimulationEngine:
             co2_target: Target CO2 level in ppm (default 1000)
         """
 
-        if not enabled:
+        if enabled == "False":
             logger.info("Daily regime disabled")
             return
 
@@ -365,7 +380,19 @@ class SimulationEngine:
         self._execute_scheduled_actions()
 
         # Execute daily automated regime (watering, ventilation)
-        # self._execute_daily_regime()
+        if self.daily_regime_enabled:
+            self._execute_daily_regime()
+            
+        # if self.state.hour % 4 == 0:
+            
+        # # add record to the txt file - data/records/logs.txt
+        # with open(file_name, 'a') as f:
+        #     # need to record if the engine.state.hour % 24 == 0: -> every 24 hours
+        #     # need to record -> biomass, pheno stage, relative humidity, air temperature, CO2
+        #     f.write(f"{state.hour / 24},{state.biomass},{state.phenological_stage.value},{state.relative_humidity},{state.air_temp},{state.CO2}, {state.RGR}\n")  
+        
+            
+
 
         if not self.state.is_alive:
             self._handle_dead_plant()
@@ -432,14 +459,24 @@ class SimulationEngine:
 
     def _calculate_stresses(self) -> None:
         """Calculate all stress factors"""
-        # Water stress
-        self.state.water_stress = calculate_water_stress(
-            self.state.soil_water,
-            self.plant_profile.water.wilting_point,
-            self.plant_profile.water.optimal_range_min,
-            self.plant_profile.water.optimal_range_max,
-            self.plant_profile.water.saturation
+        # Water stress with TIME-BASED EXPONENTIAL ACCUMULATION
+        # Stress accumulates exponentially when water is inadequate
+        # Stress recovers gradually when water is supplied
+        new_stress, new_hours_without_water = calculate_water_stress(
+            soil_water=self.state.soil_water,
+            wilting_point=self.plant_profile.water.wilting_point,
+            optimal_min=self.plant_profile.water.optimal_range_min,
+            optimal_max=self.plant_profile.water.optimal_range_max,
+            saturation=self.plant_profile.water.saturation,
+            hours_without_water=self.state.hours_without_adequate_water,
+            previous_stress=self.state.accumulated_water_stress,
+            dt=1.0  # 1 hour timestep
         )
+
+        # Update state with new stress values
+        self.state.water_stress = new_stress
+        self.state.accumulated_water_stress = new_stress
+        self.state.hours_without_adequate_water = new_hours_without_water
 
         # Temperature stress
         self.state.temp_stress = calculate_temperature_stress(
@@ -560,11 +597,13 @@ class SimulationEngine:
         ) * night_respiration_factor
 
         # Net growth (can be NEGATIVE at night!)
+        # IMPROVED: Pass biomass for biomass-dependent stress response
         delta_biomass = calculate_growth(
             self.state.photosynthesis,
             self.state.respiration,
             self.state.water_stress,
             self.state.cumulative_damage,
+            biomass=self.state.biomass,  # IMPROVED: For biomass-dependent stress
             hour=self.state.hour
         )
 
@@ -589,15 +628,24 @@ class SimulationEngine:
         # Store growth rate (can be negative at night)
         self.state.growth_rate = actual_change
 
+        # Track CO2 uptake (net CO2 consumption = photosynthesis - respiration)
+        # Positive = net CO2 consumption (healthy photosynthesis)
+        # Negative = net CO2 production (no photosynthesis, only respiration)
+        self.state.co2_uptake = self.state.photosynthesis - self.state.respiration
+
         # Calculate growth metrics (RGR, doubling time, saturation)
+        # IMPROVED: Pass soil water parameters for water stress scaling
         self.state.RGR = calculate_RGR(
             self.state.biomass,
             actual_change,
             hour=self.state.hour,
+            water_stress=self.state.water_stress,  # FIXED: Pass water stress to make boost water-dependent
+            soil_water=self.state.soil_water,  # IMPROVED: For water stress scaling
+            wilting_point=self.plant_profile.water.wilting_point,  # IMPROVED
+            optimal_min=self.plant_profile.water.optimal_range_min,  # IMPROVED
             dt=1.0, # 1 hour timestep
-            # CURRENTLY HARDCODED _ WILL HAVE TO CHANGE
             seedling_boost=0.002,  # g/h, adjustable
-            boost_hours=24,          # apply boost for first 24 hours
+            boost_hours=168,  # FIXED: Extended to 168 hours (7 days) for full seedling stage
             boost_biomass_threshold=self.plant_profile.phenology.seed_to_seedling_biomass  # apply boost if biomass below this
         )
 
@@ -714,11 +762,31 @@ class SimulationEngine:
         )
 
     def _check_death(self) -> None:
-        """Check if plant has died"""
-        if check_death(self.state.cumulative_damage):
+        """
+        Comprehensive death check with multiple conditions
+
+        Plant is dead if ANY of these conditions are met:
+        1. Cumulative damage >= 95%
+        2. Biomass <= 0.01 g (essentially nothing left)
+        3. Net RGR <= 0 for > 48 hours consecutively
+        4. CO2 uptake <= 0 for > 24 hours consecutively
+        """
+        is_dead, death_reason = check_death_comprehensive(
+            cumulative_damage=self.state.cumulative_damage,
+            biomass=self.state.biomass,
+            history=self.history,
+            current_hour=self.state.hour,
+            damage_threshold=95.0,
+            min_biomass=0.01,
+            negative_rgr_hours=48,
+            zero_co2_uptake_hours=24
+        )
+
+        if is_dead:
             self.state.is_alive = False
             self.state.phenological_stage = PhenologicalStage.DEAD
-            logger.warning(f"Plant {self.plant_id} died at hour {self.state.hour}")
+            self.state.death_reason = death_reason
+            logger.warning(f"Plant {self.plant_id} died at hour {self.state.hour}: {death_reason}")
 
     # def _update_phenology(self) -> None:
     #     """Update phenological stage based on thermal time"""

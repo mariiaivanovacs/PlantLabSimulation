@@ -42,6 +42,11 @@ class PlantState(BaseModel):
     water_stress: float = Field(default=0, description="Current water stress (0-1)", ge=0, le=1)
     temp_stress: float = Field(default=0, description="Temperature stress (0-1)", ge=0, le=1)
     nutrient_stress: float = Field(default=0, description="Nutrient stress (0-1)", ge=0, le=1)
+
+    # Water stress tracking (for time-based exponential stress)
+    hours_without_adequate_water: float = Field(default=0, description="Hours since soil water dropped below optimal", ge=0)
+    accumulated_water_stress: float = Field(default=0, description="Accumulated water stress (0-1) with exponential growth", ge=0, le=1)
+    last_watering_hour: int = Field(default=0, description="Hour of last watering event")
     
     # Soil state
     soil_water: float = Field(default=40, description="Volumetric soil water content (%)", ge=0, le=100)
@@ -64,11 +69,15 @@ class PlantState(BaseModel):
     photosynthesis: float = Field(default=0, description="Gross photosynthesis this hour (g)", ge=0)
     respiration: float = Field(default=0, description="Maintenance respiration this hour (g)", ge=0)
     growth_rate: float = Field(default=0, description="Biomass growth this hour (g/h)")
+    co2_uptake: float = Field(default=0, description="Net CO2 uptake this hour (g): photosynthesis - respiration")
 
     # Growth metrics (NEW: RGR and logistic growth tracking)
-    RGR: float = Field(default=0, description="Relative Growth Rate (1/h): (1/B)·dB/dt", ge=0)
+    RGR: float = Field(default=0, description="Relative Growth Rate (1/h): (1/B)·dB/dt")
     doubling_time: float = Field(default=float('inf'), description="Doubling time (hours): ln(2)/RGR", ge=0)
     growth_saturation: float = Field(default=0, description="Growth saturation factor (0-1): B/K", ge=0, le=1)
+
+    # Death tracking (for comprehensive death checks)
+    death_reason: str = Field(default="", description="Reason for death if plant died")
     
     # Room/container properties
     pot_volume: float = Field(default=5, description="Pot volume (L)", ge=0)

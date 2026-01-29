@@ -26,3 +26,10 @@ instance/
 # Firebase
 firebase-credentials.json
 
+
+
+
+*.md
+
+# files with test in the name
+test_*.py

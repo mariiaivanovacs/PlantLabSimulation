@@ -1,3 +1,4 @@
 phenological_stage,duration_hours,records
-seedling,60,5
-vegetative,360,30
+seedling,24,2
+vegetative,240,20
+dead,84,7

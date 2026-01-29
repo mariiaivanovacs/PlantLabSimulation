@@ -107,24 +107,25 @@ EXPECTED_COLS = [
     "relative_humidity",
     "air_temp",
     "CO2",
-    "RGR"
+    "RGR",
+    "ET",
+    "water_stress"
 ]
 
-STAGE_ORDER = ["seed", "seedling", "vegetative", "flowering", "fruiting", "mature"]
+STAGE_ORDER = ["seed", "seedling", "vegetative", "flowering", "fruiting", "mature", "dead"]
 
 
 def parse_line(line: str, line_no: int):
     """Parse a single log line into a dict; return None for malformed lines."""
     if not line or not line.strip():
         return None
-    # split into at most 7 parts to handle stray commas in later fields (defensive)
-    parts = [p.strip() for p in line.strip().split(",", 6)]
+    # split into at most 9 parts to handle new ET and water_stress fields
+    parts = [p.strip() for p in line.strip().split(",", 8)]
     if len(parts) < 7:
-        # if still fewer than 7, skip
+        # if still fewer than 7, skip (old format without ET and water_stress)
         print(f"[parse] skipping malformed line {line_no}: {line.strip()}", file=sys.stderr)
         return None
-    # keep first 7 pieces
-    parts = parts[:7]
+
     try:
         rec_idx = int(float(parts[0]))
         biomass = float(parts[1])
@@ -133,6 +134,11 @@ def parse_line(line: str, line_no: int):
         t = float(parts[4])
         co2 = float(parts[5])
         rgr = float(parts[6])
+
+        # Handle optional ET and water_stress fields (new format)
+        et = float(parts[7]) if len(parts) > 7 else 0.0
+        water_stress = float(parts[8]) if len(parts) > 8 else 0.0
+
         return {
             "record_idx": rec_idx,
             "biomass": biomass,
@@ -140,7 +146,9 @@ def parse_line(line: str, line_no: int):
             "relative_humidity": rh,
             "air_temp": t,
             "CO2": co2,
-            "RGR": rgr
+            "RGR": rgr,
+            "ET": et,
+            "water_stress": water_stress
         }
     except Exception as e:
         print(f"[parse] error parsing line {line_no}: {e}; line content: {parts}", file=sys.stderr)
@@ -189,7 +197,14 @@ def summarize_and_save(df: pd.DataFrame, outdir: str, prefix: str = "growth"):
     parsed_csv = os.path.join(outdir, f"{prefix}_parsed.csv")
     df.to_csv(parsed_csv, index=False)
 
-    summary = df[["biomass", "RGR", "CO2", "air_temp", "relative_humidity"]].agg(["min", "mean", "max"]).T
+    # Include ET and water_stress in summary if they exist
+    summary_cols = ["biomass", "RGR", "CO2", "air_temp", "relative_humidity"]
+    if "ET" in df.columns:
+        summary_cols.append("ET")
+    if "water_stress" in df.columns:
+        summary_cols.append("water_stress")
+
+    summary = df[summary_cols].agg(["min", "mean", "max"]).T
     summary_csv = os.path.join(outdir, f"{prefix}_summary.csv")
     summary.to_csv(summary_csv)
 
@@ -289,6 +304,61 @@ def generate_plots(df: pd.DataFrame, outdir: str, prefix: str = "growth"):
     fig.savefig(path)
     plt.close(fig)
     saved["phenology_plot"] = path
+
+    # 6) ET (Evapotranspiration) - if available
+    if "ET" in df.columns and df["ET"].notna().any():
+        fig = plt.figure(figsize=(8, 4))
+        plt.plot(df["time_hours"], df["ET"], marker="o", color="blue")
+        plt.title("Evapotranspiration (ET) over time")
+        plt.xlabel("Time (hours)")
+        plt.ylabel("ET (L/h)")
+        plt.grid(True)
+        plt.tight_layout()
+        path = os.path.join(outdir, f"{prefix}_ET.png")
+        fig.savefig(path)
+        plt.close(fig)
+        saved["ET_plot"] = path
+
+    # 7) Water Stress - if available
+    if "water_stress" in df.columns and df["water_stress"].notna().any():
+        fig = plt.figure(figsize=(8, 4))
+        plt.plot(df["time_hours"], df["water_stress"], marker="o", color="red")
+        plt.axhline(0.5, linestyle="--", color="orange", label="High stress threshold")
+        plt.axhline(0.8, linestyle="--", color="darkred", label="Critical stress threshold")
+        plt.title("Water Stress over time")
+        plt.xlabel("Time (hours)")
+        plt.ylabel("Water Stress (0-1)")
+        plt.ylim(0, 1)
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        path = os.path.join(outdir, f"{prefix}_water_stress.png")
+        fig.savefig(path)
+        plt.close(fig)
+        saved["water_stress_plot"] = path
+
+    # 8) Combined ET vs Water Stress - if both available
+    if "ET" in df.columns and "water_stress" in df.columns and df["ET"].notna().any() and df["water_stress"].notna().any():
+        fig = plt.figure(figsize=(8, 4))
+        ax1 = fig.add_subplot(111)
+        ax1.plot(df["time_hours"], df["ET"], marker="o", color="blue", label="ET (L/h)")
+        ax1.set_xlabel("Time (hours)")
+        ax1.set_ylabel("ET (L/h)", color="blue")
+        ax1.tick_params(axis='y', labelcolor="blue")
+
+        ax2 = ax1.twinx()
+        ax2.plot(df["time_hours"], df["water_stress"], marker="s", color="red", label="Water Stress")
+        ax2.set_ylabel("Water Stress (0-1)", color="red")
+        ax2.tick_params(axis='y', labelcolor="red")
+        ax2.set_ylim(0, 1)
+
+        plt.title("ET and Water Stress over time")
+        plt.grid(True)
+        plt.tight_layout()
+        path = os.path.join(outdir, f"{prefix}_ET_vs_water_stress.png")
+        fig.savefig(path)
+        plt.close(fig)
+        saved["ET_vs_water_stress_plot"] = path
 
     return saved
 
