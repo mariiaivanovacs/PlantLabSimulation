@@ -38,7 +38,11 @@ from physics.growth import (
     update_leaf_area,
     decay_biomass,
     is_daytime,
-    get_light_factor
+    get_light_factor,
+    calculate_RGR,
+    calculate_doubling_time,
+    calculate_growth_saturation,
+    apply_logistic_growth_factor
 )
 from physics.damage import (
     calculate_damage_rate,
@@ -128,6 +132,11 @@ class SimulationEngine:
         self.ventilation_hour: int = 12   # Ventilate at noon
         self.daily_water_amount: float = 0.3  # Liters per day
         self.daily_ventilation_speed: float = 20.0  # Fan speed 0-100%
+
+        # CO2 enrichment settings
+        self.co2_enrichment_enabled: bool = True
+        self.co2_target_ppm: float = 1000.0  # Target CO2 level for enrichment
+        self.co2_enrichment_hours: tuple = (6, 20)  # Only enrich during daylight
 
         logger.info(f"Initialized simulation {self.simulation_id} with plant {self.plant_id}")
 
@@ -267,6 +276,7 @@ class SimulationEngine:
         Runs once per day at specified hours:
         - Watering at watering_hour (default 7:00 AM)
         - Ventilation at ventilation_hour (default 12:00 noon)
+        - CO2 enrichment during daylight hours (maintains target ppm)
         """
         if not self.daily_regime_enabled:
             return
@@ -294,13 +304,29 @@ class SimulationEngine:
             result = self.apply_tool(action)
             logger.info(f"Daily regime - Ventilation: {result.message}")
 
+        # CO2 enrichment during daylight hours
+        if self.co2_enrichment_enabled:
+            start_hour, end_hour = self.co2_enrichment_hours
+            if start_hour <= hour_of_day < end_hour:
+                # Inject CO2 if below target level
+                if self.state.CO2 < self.co2_target_ppm:
+                    # Use target-based injection (tool calculates required amount)
+                    action = ToolAction(
+                        tool_type=ToolType.CO2_CONTROL,
+                        parameters={'target_co2_ppm': self.co2_target_ppm}
+                    )
+                    result = self.apply_tool(action)
+                    logger.debug(f"Daily regime - CO2 enrichment: {result.message}")
+
     def set_daily_regime(
         self,
         enabled: bool = True,
         watering_hour: int = 7,
         ventilation_hour: int = 12,
         water_amount: float = 0.3,
-        fan_speed: float = 20.0
+        fan_speed: float = 20.0,
+        co2_enrichment: bool = True,
+        co2_target: float = 1000.0
     ) -> None:
         """
         Configure the daily automated regime
@@ -311,20 +337,25 @@ class SimulationEngine:
             ventilation_hour: Hour of day to ventilate (0-23)
             water_amount: Amount of water per day (L)
             fan_speed: Ventilation fan speed (0-100%)
+            co2_enrichment: Enable CO2 enrichment during daylight
+            co2_target: Target CO2 level in ppm (default 1000)
         """
-        
+
         if not enabled:
             logger.info("Daily regime disabled")
             return
-        
+
         self.daily_regime_enabled = enabled
         self.watering_hour = watering_hour % 24
         self.ventilation_hour = ventilation_hour % 24
         self.daily_water_amount = water_amount
         self.daily_ventilation_speed = fan_speed
+        self.co2_enrichment_enabled = co2_enrichment
+        self.co2_target_ppm = co2_target
         logger.info(f"Daily regime {'enabled' if enabled else 'disabled'}: "
                    f"water at {watering_hour}:00 ({water_amount}L), "
-                   f"ventilate at {ventilation_hour}:00 ({fan_speed}%)")
+                   f"ventilate at {ventilation_hour}:00 ({fan_speed}%), "
+                   f"CO2 enrichment {'enabled' if co2_enrichment else 'disabled'} (target: {co2_target}ppm)")
             
             
 
@@ -334,7 +365,7 @@ class SimulationEngine:
         self._execute_scheduled_actions()
 
         # Execute daily automated regime (watering, ventilation)
-        self._execute_daily_regime()
+        # self._execute_daily_regime()
 
         if not self.state.is_alive:
             self._handle_dead_plant()
@@ -494,16 +525,28 @@ class SimulationEngine:
         # Photosynthesis: only during daytime
         # Apply light factor from day/night cycle
         effective_PAR = self.state.light_PAR * light_factor
+        print(f"Effective PAR: {effective_PAR}")
+        
+        with open('data/records/photosynthesis.txt', 'a') as f:
+            f.write(f"{effective_PAR}, {self.state.light_PAR}, {light_factor}\n")   
 
-        # FIX: Pass biomass as 2nd parameter (not leaf_area)
-        # Function signature: calculate_photosynthesis(light_PAR, biomass, f_temp, f_nutrient, LUE, leaf_area_ratio)
+        # Calculate ground area based on plant size (scales with growth)
+        # Starts at 0.0025 m² (5x5cm) for seedlings, grows to 0.04 m² (20x20cm) at maturity
+        min_ground_area = 0.0025  # 5x5 cm for tiny seedling
+        max_ground_area = 0.04   # 20x20 cm for mature plant
+        # Ground area scales with biomass^0.5 (area scales with sqrt of mass)
+        ground_area_factor = min(1.0, (self.state.biomass / 50.0) ** 0.5)
+        ground_area = min_ground_area + (max_ground_area - min_ground_area) * ground_area_factor
+
+        # FIX: Pass biomass as 2nd parameter and ground_area for proper LAI calculation
         base_photosynthesis = calculate_photosynthesis(
             effective_PAR,
-            self.state.biomass,  # Changed: biomass is now 2nd parameter
+            self.state.biomass,
             f_temp,
             f_nutrient,
             self.plant_profile.growth.LUE,
-            self.plant_profile.growth.leaf_area_ratio
+            self.plant_profile.growth.leaf_area_ratio,
+            ground_area
         )
 
         # Apply CO2 enhancement (only matters during day)
@@ -525,16 +568,45 @@ class SimulationEngine:
             hour=self.state.hour
         )
 
+        # Apply logistic growth constraint
+        # This prevents unrealistic exponential growth as plant approaches max size
+        # Early growth (B << K): minimal constraint, ~exponential
+        # Near max (B → K): strong constraint, growth slows to zero
+        delta_biomass_constrained = apply_logistic_growth_factor(
+            delta_biomass,
+            self.state.biomass,
+            self.plant_profile.growth.max_biomass
+        )
+
         # Update biomass (handles both growth and loss)
         self.state.biomass, actual_change = update_biomass(
             self.state.biomass,
-            delta_biomass,
+            delta_biomass_constrained,  # Use constrained value
             self.plant_profile.growth.max_biomass,
             self.state.cumulative_damage
         )
 
         # Store growth rate (can be negative at night)
         self.state.growth_rate = actual_change
+
+        # Calculate growth metrics (RGR, doubling time, saturation)
+        self.state.RGR = calculate_RGR(
+            self.state.biomass,
+            actual_change,
+            hour=self.state.hour,
+            dt=1.0, # 1 hour timestep
+            # CURRENTLY HARDCODED _ WILL HAVE TO CHANGE
+            seedling_boost=0.002,  # g/h, adjustable
+            boost_hours=24,          # apply boost for first 24 hours
+            boost_biomass_threshold=self.plant_profile.phenology.seed_to_seedling_biomass  # apply boost if biomass below this
+        )
+
+        self.state.doubling_time = calculate_doubling_time(self.state.RGR)
+
+        self.state.growth_saturation = calculate_growth_saturation(
+            self.state.biomass,
+            self.plant_profile.growth.max_biomass
+        )
 
         # Update leaf area based on current biomass
         self.state.leaf_area = update_leaf_area(
@@ -634,8 +706,11 @@ class SimulationEngine:
         self.state.thermal_time = calculate_thermal_time(
             self.state.air_temp,
             self.state.soil_temp,
+            self.state.thermal_time,
             self.plant_profile.temperature.T_base,
-            self.state.thermal_time
+            self.plant_profile.temperature.T_opt,
+            self.plant_profile.temperature.air_weight,
+            self.plant_profile.temperature.soil_weight
         )
 
     def _check_death(self) -> None:
@@ -645,8 +720,41 @@ class SimulationEngine:
             self.state.phenological_stage = PhenologicalStage.DEAD
             logger.warning(f"Plant {self.plant_id} died at hour {self.state.hour}")
 
+    # def _update_phenology(self) -> None:
+    #     """Update phenological stage based on thermal time"""
+    #     if not self.state.is_alive:
+    #         return
+
+    #     p = self.plant_profile.phenology
+    #     tt = self.state.thermal_time
+    #     b = self.state.biomass
+
+    #     current = self.state.phenological_stage
+
+    #     if current == PhenologicalStage.SEED:
+    #         if tt >= p.seed_to_seedling_GDD and b >= p.seed_to_seedling_biomass:
+    #             self.state.phenological_stage = PhenologicalStage.SEEDLING
+
+    #     elif current == PhenologicalStage.SEEDLING:
+    #         if tt >= p.seedling_to_vegetative_GDD:
+    #             self.state.phenological_stage = PhenologicalStage.VEGETATIVE
+
+    #     elif current == PhenologicalStage.VEGETATIVE:
+    #         if tt >= p.vegetative_to_flowering_GDD:
+    #             self.state.phenological_stage = PhenologicalStage.FLOWERING
+
+    #     elif current == PhenologicalStage.FLOWERING:
+    #         if tt >= p.flowering_to_fruiting_GDD:
+    #             self.state.phenological_stage = PhenologicalStage.FRUITING
+
+    #     elif current == PhenologicalStage.FRUITING:
+    #         if tt >= p.fruiting_to_mature_GDD:
+    #             self.state.phenological_stage = PhenologicalStage.MATURE
+
+
+
     def _update_phenology(self) -> None:
-        """Update phenological stage based on thermal time"""
+        """Update phenological stage based on thermal time and optional biomass check"""
         if not self.state.is_alive:
             return
 
@@ -654,27 +762,61 @@ class SimulationEngine:
         tt = self.state.thermal_time
         b = self.state.biomass
 
-        current = self.state.phenological_stage
+        changed = True
+        while changed:  # Allow multiple stage jumps if thresholds are exceeded
+            changed = False
+            current = self.state.phenological_stage
 
-        if current == PhenologicalStage.SEED:
-            if tt >= p.seed_to_seedling_GDD and b >= p.seed_to_seedling_biomass:
-                self.state.phenological_stage = PhenologicalStage.SEEDLING
+            if current == PhenologicalStage.SEED:
+                if tt >= p.seed_to_seedling_GDD and b >= p.seed_to_seedling_biomass:
+                    self.state.phenological_stage = PhenologicalStage.SEEDLING
+                    changed = True
+                    
+            elif current == PhenologicalStage.SEEDLING:
+                if tt >= p.seedling_to_vegetative_GDD and b >= p.seedling_to_vegetative_biomass:
+                    self.state.phenological_stage = PhenologicalStage.VEGETATIVE
+                    changed = True
 
-        elif current == PhenologicalStage.SEEDLING:
-            if tt >= p.seedling_to_vegetative_GDD:
-                self.state.phenological_stage = PhenologicalStage.VEGETATIVE
+            elif current == PhenologicalStage.VEGETATIVE:
+                if tt >= p.vegetative_to_flowering_GDD and b >= p.vegetative_to_flowering_biomass:
+                    self.state.phenological_stage = PhenologicalStage.FLOWERING
+                    changed = True
 
-        elif current == PhenologicalStage.VEGETATIVE:
-            if tt >= p.vegetative_to_flowering_GDD:
-                self.state.phenological_stage = PhenologicalStage.FLOWERING
+            elif current == PhenologicalStage.FLOWERING:
+                if tt >= p.flowering_to_fruiting_GDD and b >= p.flowering_to_fruiting_biomass:
+                    self.state.phenological_stage = PhenologicalStage.FRUITING
+                    changed = True
 
-        elif current == PhenologicalStage.FLOWERING:
-            if tt >= p.flowering_to_fruiting_GDD:
-                self.state.phenological_stage = PhenologicalStage.FRUITING
+            elif current == PhenologicalStage.FRUITING:
+                if tt >= p.fruiting_to_mature_GDD and b >= p.fruiting_to_mature_biomass:
+                    self.state.phenological_stage = PhenologicalStage.MATURE
+                    changed = True
 
-        elif current == PhenologicalStage.FRUITING:
-            if tt >= p.fruiting_to_mature_GDD:
-                self.state.phenological_stage = PhenologicalStage.MATURE
+
+            # elif current == PhenologicalStage.SEEDLING:
+            #     if tt >= p.seedling_to_vegetative_GDD:  # optional: add biomass check
+            #         self.state.phenological_stage = PhenologicalStage.VEGETATIVE
+            #         changed = True
+
+            # elif current == PhenologicalStage.VEGETATIVE:
+            #     if tt >= p.vegetative_to_flowering_GDD:
+            #         self.state.phenological_stage = PhenologicalStage.FLOWERING
+            #         changed = True
+
+            # elif current == PhenologicalStage.FLOWERING:
+            #     if tt >= p.flowering_to_fruiting_GDD:
+            #         self.state.phenological_stage = PhenologicalStage.FRUITING
+            #         changed = True
+
+            # elif current == PhenologicalStage.FRUITING:
+            #     if tt >= p.fruiting_to_mature_GDD:
+            #         self.state.phenological_stage = PhenologicalStage.MATURE
+            #         changed = True
+
+            # Optionally log stage changes
+            if changed:
+                print(f"[Phenology] Hour: {self.state.hour}, Stage changed: {current} -> {self.state.phenological_stage}")
+
 
     def _handle_dead_plant(self) -> None:
         """Handle dead plant - apply decay"""

@@ -11,7 +11,9 @@ class TemperatureResponse(BaseModel):
     T_min: float = Field(description="Minimum temperature for growth (°C)")
     T_opt: float = Field(description="Optimal temperature (°C)")
     T_max: float = Field(description="Maximum temperature for growth (°C)")
-    T_base: float = Field(description="Base temperature for thermal time (°C)")
+    T_base: float = Field(description="Base temperature for thermal time (°C)"),
+    air_weight: float = Field(default=0.7, description="Weight of air temperature in averaging (0-1)")
+    soil_weight: float = Field(default=0.3, description="Weight of soil temperature in averaging (0-1)")
 
 
 class WaterRequirements(BaseModel):
@@ -50,7 +52,11 @@ class PhenologyThresholds(BaseModel):
     vegetative_to_flowering_GDD: float = Field(default=2000, description="°C·h")
     flowering_to_fruiting_GDD: float = Field(default=3500, description="°C·h")
     fruiting_to_mature_GDD: float = Field(default=5000, description="°C·h")
-    seed_to_seedling_biomass: float = Field(default=0.1, description="Minimum biomass (g)")
+    seed_to_seedling_biomass: float = Field(default=0.1, description="Minimum biomass (g)"),
+    seedling_to_vegetative_biomass: float = Field(default=0.1, description="Minimum biomass (g)")
+    vegetative_to_flowering_biomass: float = Field(default=0.1, description="Minimum biomass (g)")
+    flowering_to_fruiting_biomass: float = Field(default=0.1, description="Minimum biomass (g)")
+    fruiting_to_mature_biomass: float = Field(default=0.1, description="Minimum biomass (g)")
 
 
 class PlantProfile(BaseModel):

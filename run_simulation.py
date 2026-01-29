@@ -109,7 +109,7 @@ def display_metrics(engine: SimulationEngine, simulation_hours_per_tick: int = 1
     with open(file_name, 'a') as f:
         # need to record if the engine.state.hour % 24 == 0: -> every 24 hours
         # need to record -> biomass, pheno stage, relative humidity, air temperature, CO2
-        f.write(f"{state.hour // 24},{state.biomass},{state.phenological_stage.value},{state.relative_humidity},{state.air_temp},{state.CO2}\n")  
+        f.write(f"{state.hour / 24},{state.biomass},{state.phenological_stage.value},{state.relative_humidity},{state.air_temp},{state.CO2}, {state.RGR}\n")  
         
 
         
@@ -142,6 +142,21 @@ def display_metrics(engine: SimulationEngine, simulation_hours_per_tick: int = 1
     print(f"  Biomass:         {state.biomass:8.2f} g  (max: {profile.growth.max_biomass} g)")
     print(f"  Leaf Area:       {state.leaf_area:8.4f} m²")
     print(f"  Thermal Time:    {state.thermal_time:8.1f} °C·h")
+
+    # Growth Metrics (NEW: RGR and logistic growth)
+    print(f"\n{CYAN}GROWTH METRICS{RESET}")
+    rgr_percent_per_day = state.RGR * 24 * 100  # Convert 1/h to %/day
+    print(f"  RGR:             {state.RGR:8.6f} /h  ({rgr_percent_per_day:6.2f}% per day)")
+
+    if state.doubling_time < 1000:
+        doubling_days = state.doubling_time / 24
+        print(f"  Doubling Time:   {state.doubling_time:8.1f} h  ({doubling_days:5.2f} days)")
+    else:
+        print(f"  Doubling Time:   {'∞':>8s} h  (not growing)")
+
+    saturation_percent = state.growth_saturation * 100
+    saturation_color = GREEN if saturation_percent < 30 else (YELLOW if saturation_percent < 70 else RED)
+    print(f"  Saturation:      {saturation_color}{saturation_percent:7.1f}%{RESET}  (B/K ratio)")
 
     # Damage
     damage_color = GREEN if state.cumulative_damage < 30 else (YELLOW if state.cumulative_damage < 70 else RED)
@@ -348,7 +363,7 @@ def run_simulation(
     engine = SimulationEngine(profile)
     
     # Set daily regime
-    engine.set_daily_regime(enabled=daily_regime)
+    engine.set_daily_regime(enabled=False)
 
     # Initialize services (will gracefully degrade if not configured)
     bq_service = None

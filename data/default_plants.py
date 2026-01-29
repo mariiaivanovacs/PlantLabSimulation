@@ -67,7 +67,9 @@ def get_tomato_profile() -> PlantProfile:
             T_min=10.0,
             T_opt=25.0,
             T_max=35.0,
-            T_base=10.0
+            T_base=10.0, 
+            air_weight=0.8,
+            soil_weight=0.2
         ),
         
         water=WaterRequirements(
@@ -88,21 +90,37 @@ def get_tomato_profile() -> PlantProfile:
         ),
         
         growth=GrowthParameters(
-            LUE=0.000015,     # FIX: Corrected (0.003 / 200 = 1.5e-05)
-            r_base=0.000026,  # FIX: 1.5% per day / 24 hours = 0.0625% per hour
+            LUE=0.000015,     # Light Use Efficiency (g/umol)
+            r_base=0.000625,  # FIX: Realistic 1.5% per day / 24 hours = 0.0625% per hour
             max_biomass=500.0,
             leaf_area_ratio=0.004,
             optimal_PAR=600.0,
             PAR_saturation=1200.0
         ),
         
-        phenology=PhenologyThresholds(
-            seed_to_seedling_GDD=50.0,
-            seedling_to_vegetative_GDD=500.0,
-            vegetative_to_flowering_GDD=2000.0,
-            flowering_to_fruiting_GDD=3500.0,
-            fruiting_to_mature_GDD=5000.0,
-            seed_to_seedling_biomass=0.1
+        # phenology=PhenologyThresholds(
+        #     seed_to_seedling_GDD=50.0,
+        #     seedling_to_vegetative_GDD=500.0,
+        #     vegetative_to_flowering_GDD=2000.0,
+        #     flowering_to_fruiting_GDD=3500.0,
+        #     fruiting_to_mature_GDD=5000.0,
+        #     seed_to_seedling_biomass=0.1
+        # ),
+        
+        phenology = PhenologyThresholds(
+            # Thermal time thresholds (GDD)
+            seed_to_seedling_GDD=100.0,             # tomato seeds take longer to germinate
+            seedling_to_vegetative_GDD=500.0,       # true leaves formed
+            vegetative_to_flowering_GDD=1500.0,     # flower buds start forming
+            flowering_to_fruiting_GDD=2000.0,       # fruit set occurs
+            fruiting_to_mature_GDD=3000.0,          # fruits fully mature
+
+            # Corresponding biomass thresholds (grams)
+            seed_to_seedling_biomass=0.1,           # tiny germinated seedling
+            seedling_to_vegetative_biomass=1.0,     # small seedling with leaves
+            vegetative_to_flowering_biomass=50.0,   # enough vegetative growth for flowering
+            flowering_to_fruiting_biomass=150.0,    # enough plant mass to support fruits
+            fruiting_to_mature_biomass=300.0        # fully grown plant with ripe fruits
         ),
         
         optimal_RH_min=50.0,
@@ -135,7 +153,9 @@ def get_lettuce_profile() -> PlantProfile:
             T_min=4.0,    # lower threshold for growth
             T_opt=20.0,   # optimal temperature for lettuce leaves
             T_max=28.0,   # upper threshold before rapid heat stress
-            T_base=4.0
+            T_base=4.0,
+            air_weight=0.7,
+            soil_weight=0.3
         ),
         
         water=WaterRequirements(
@@ -156,22 +176,39 @@ def get_lettuce_profile() -> PlantProfile:
         ),
         
         growth=GrowthParameters(
-            LUE=0.000006,     # FIX: Corrected to 6e-06 g/umol (was 197x too high!)
-            r_base=0.000021,  # FIX: 1.2% per day / 24 hours = 0.05% per hour
+            LUE=0.000008,     # Light Use Efficiency - slightly increased for realistic growth
+            r_base=0.0005,    # FIX: Realistic 1.2% per day / 24 hours = 0.05% per hour
             max_biomass=300.0, # genetic potential (fresh mass, g) for a mature head
-            leaf_area_ratio=0.004,  # FIX: Realistic leaf area ratio (m²/g)
-            optimal_PAR=200.0,     # lower light needs (µmol m-2 s-1 scale)
+            leaf_area_ratio=0.004,  # Realistic leaf area ratio (m²/g)
+            optimal_PAR=800.0,     # lower light needs (µmol m-2 s-1 scale)
             PAR_saturation=600.0
         ),
         
-        phenology=PhenologyThresholds(
-            seed_to_seedling_GDD=50.0,
-            seedling_to_vegetative_GDD=200.0,
-            vegetative_to_flowering_GDD=2500.0,  # usually harvested before flowering
-            flowering_to_fruiting_GDD=3000.0,
-            fruiting_to_mature_GDD=3500.0,
-            seed_to_seedling_biomass=0.05
+        # phenology=PhenologyThresholds(
+        #     seed_to_seedling_GDD=50.0,
+        #     seedling_to_vegetative_GDD=200.0,
+        #     vegetative_to_flowering_GDD=2500.0,  # usually harvested before flowering
+        #     flowering_to_fruiting_GDD=3000.0,
+        #     fruiting_to_mature_GDD=3500.0,
+        #     seed_to_seedling_biomass=0.05
+        # ),
+        
+        phenology = PhenologyThresholds(
+            # Thermal time thresholds (GDD)
+            seed_to_seedling_GDD=50.0,               # 2–3 days germination
+            seedling_to_vegetative_GDD=200.0,       # ~10 days to true leaves
+            vegetative_to_flowering_GDD=2500.0,     # usually harvested before flowering
+            flowering_to_fruiting_GDD=3000.0,       
+            fruiting_to_mature_GDD=3500.0,          
+
+            # Corresponding biomass thresholds (grams)
+            seed_to_seedling_biomass=0.05,          # tiny seedling just germinated
+            seedling_to_vegetative_biomass=0.1,     # needs some leaves to be "vegetative"
+            vegetative_to_flowering_biomass=150.0,  # leafy mass before bolting
+            flowering_to_fruiting_biomass=200.0,    # only relevant for seed production
+            fruiting_to_mature_biomass=250.0        # mature seed production
         ),
+
         
         optimal_RH_min=60.0,
         optimal_RH_max=80.0,
@@ -205,7 +242,9 @@ def get_basil_profile() -> PlantProfile:
             T_min=15.0,
             T_opt=24.0,
             T_max=32.0,
-            T_base=12.0
+            T_base=12.0,
+            air_weight=0.8,
+            soil_weight=0.2
         ),
         
         water=WaterRequirements(
@@ -226,23 +265,39 @@ def get_basil_profile() -> PlantProfile:
         ),
         
         growth=GrowthParameters(
-            LUE=0.000014,     # FIX: Corrected (0.0028 / 200 = 1.4e-05)
-            r_base=0.000029,  # FIX: 1.7% per day / 24 hours = 0.07% per hour
+            LUE=0.000014,     # Light Use Efficiency (g/umol)
+            r_base=0.0007,    # FIX: Realistic 1.7% per day / 24 hours = 0.07% per hour
             max_biomass=100.0,
-            leaf_area_ratio=0.004,  # FIX: Realistic leaf area ratio
+            leaf_area_ratio=0.004,  # Realistic leaf area ratio
             optimal_PAR=450.0,
             PAR_saturation=1000.0
         ),
         
-        phenology=PhenologyThresholds(
-            seed_to_seedling_GDD=40.0,
-            seedling_to_vegetative_GDD=300.0,
-            vegetative_to_flowering_GDD=1200.0,
-            flowering_to_fruiting_GDD=1800.0,
-            fruiting_to_mature_GDD=2200.0,
-            seed_to_seedling_biomass=0.08
-        ),
+        # phenology=PhenologyThresholds(
+        #     seed_to_seedling_GDD=40.0,
+        #     seedling_to_vegetative_GDD=300.0,
+        #     vegetative_to_flowering_GDD=1200.0,
+        #     flowering_to_fruiting_GDD=1800.0,
+        #     fruiting_to_mature_GDD=2200.0,
+        #     seed_to_seedling_biomass=0.08
+        # ),
         
+        phenology = PhenologyThresholds(
+            # Thermal time thresholds (GDD)
+            seed_to_seedling_GDD=40.0,               # quick germination
+            seedling_to_vegetative_GDD=300.0,       # true leaves formed
+            vegetative_to_flowering_GDD=1200.0,     # flower buds start forming
+            flowering_to_fruiting_GDD=1800.0,       # full flowering / seed set
+            fruiting_to_mature_GDD=2200.0,          # mature plant, seeds ripe
+
+            # Corresponding biomass thresholds (grams)
+            seed_to_seedling_biomass=0.08,          # tiny germinated seedling
+            seedling_to_vegetative_biomass=0.5,     # small seedling with leaves
+            vegetative_to_flowering_biomass=20.0,   # enough leaf mass to flower
+            flowering_to_fruiting_biomass=50.0,     # enough plant mass for full flowering
+            fruiting_to_mature_biomass=80.0         # mature plant, seed/fruit production
+        ),
+
         optimal_RH_min=45.0,
         optimal_RH_max=65.0,
         optimal_VPD=1.1,

@@ -64,6 +64,11 @@ class PlantState(BaseModel):
     photosynthesis: float = Field(default=0, description="Gross photosynthesis this hour (g)", ge=0)
     respiration: float = Field(default=0, description="Maintenance respiration this hour (g)", ge=0)
     growth_rate: float = Field(default=0, description="Biomass growth this hour (g/h)")
+
+    # Growth metrics (NEW: RGR and logistic growth tracking)
+    RGR: float = Field(default=0, description="Relative Growth Rate (1/h): (1/B)·dB/dt", ge=0)
+    doubling_time: float = Field(default=float('inf'), description="Doubling time (hours): ln(2)/RGR", ge=0)
+    growth_saturation: float = Field(default=0, description="Growth saturation factor (0-1): B/K", ge=0, le=1)
     
     # Room/container properties
     pot_volume: float = Field(default=5, description="Pot volume (L)", ge=0)

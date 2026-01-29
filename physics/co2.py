@@ -38,6 +38,8 @@ def calculate_co2_consumption(
         CO2 consumption rate in g/h
     """
     co2_consumed = photosynthesis_rate * conversion_factor
+    # with open('data/records/co2_consumption.txt', 'a') as f:
+    #     f.write(f"{co2_consumed}\n")
     return max(0, co2_consumed)
 
 
@@ -98,6 +100,9 @@ def co2_grams_to_ppm(
 
     # ppm = (volume CO2 / total volume) * 1,000,000
     ppm = (volume_co2_L / room_volume_L) * 1_000_000
+    
+    # with open('data/records/co2_grams_to_ppm.txt', 'a') as f:
+    #     f.write(f"{co2_grams}, {room_volume_m3}, {temperature_c}, {ppm}\n")
 
     return ppm
 
