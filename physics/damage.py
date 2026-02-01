@@ -164,7 +164,11 @@ def check_death_comprehensive(
     damage_threshold: float = 95.0,
     min_biomass: float = 0.01,
     negative_rgr_hours: int = 48,
-    zero_co2_uptake_hours: int = 24
+    zero_co2_uptake_hours: int = 24,
+    phenological_stage: str = "seedling",
+    seed_reserves: float = 0.0,
+    water_stress: float = 0.0,
+    state: dict = None
 ) -> tuple[bool, str]:
     """
     Comprehensive death check with multiple conditions
@@ -174,6 +178,12 @@ def check_death_comprehensive(
     2. Biomass <= 0.01 g (essentially nothing left)
     3. Net RGR <= 0 for > 48 hours consecutively
     4. CO2 uptake <= 0 for > 24 hours consecutively
+    5. SEED STAGE: Special conditions for ungerminated seeds
+
+    SEED STAGE DEATH CONDITIONS (more strict):
+    - Seed reserves depleted (< 0.01g) + high water stress (> 0.7) = death
+    - High water stress (> 0.8) for > 48 hours = death
+    - Seed reserves depleted + current_hour > 72 = death (failed germination)
 
     IMPORTANT: Handles variable tick rates by checking actual measurements
     in history, not just counting ticks. This prevents bias when tick size
@@ -188,10 +198,34 @@ def check_death_comprehensive(
         min_biomass: Minimum viable biomass (g, default 0.01)
         negative_rgr_hours: Hours of negative RGR before death (default 48)
         zero_co2_uptake_hours: Hours of zero CO2 uptake before death (default 24)
+        phenological_stage: Current phenological stage (for seed-specific checks)
+        seed_reserves: Remaining seed reserves (g)
+        water_stress: Current water stress (0-1)
 
     Returns:
         Tuple of (is_dead: bool, death_reason: str)
     """
+    # SEED STAGE: Special death conditions
+    if phenological_stage.lower() == "seed":
+        # Condition 5a: Seed reserves depleted + high water stress
+        if seed_reserves < 0.01 and water_stress > 0.7:
+            return True, f"Seed failed to germinate: reserves depleted ({seed_reserves:.3f}g) + high water stress ({water_stress:.2f})"
+
+        # Condition 5b: Seed reserves depleted + too much time passed
+        if seed_reserves < 0.01 and current_hour > 72:
+            return True, f"Seed failed to germinate: reserves depleted after {current_hour}h (max 72h)"
+
+        # Condition 5c: High water stress for extended period (seeds are vulnerable)
+        if len(history) >= 2:
+            high_stress_duration = _check_consecutive_condition(
+                history,
+                current_hour,
+                lambda state: state.get('water_stress', 0) > 0.8,
+                48  # 48 hours of high stress
+            )
+            if high_stress_duration >= 48:
+                return True, f"Seed failed to germinate: high water stress ({water_stress:.2f}) for {high_stress_duration:.0f}h"
+
     # Condition 1: Cumulative damage
     if cumulative_damage >= damage_threshold:
         return True, f"Cumulative damage ({cumulative_damage:.1f}%) >= {damage_threshold}%"
@@ -222,7 +256,7 @@ def check_death_comprehensive(
     zero_co2_duration = _check_consecutive_condition(
         history,
         current_hour,
-        lambda state: (state.get('photosynthesis', 0) - state.get('respiration', 0)) <= 0,
+        lambda state: abs((state.get('photosynthesis', 0) - state.get('respiration', 0))) <= 0.00041,
         zero_co2_uptake_hours
     )
 

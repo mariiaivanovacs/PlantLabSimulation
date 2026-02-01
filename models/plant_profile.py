@@ -3,7 +3,14 @@ Plant Profile Model
 Defines species-specific characteristics and parameters
 """
 from typing import Dict, Any, Optional
+from enum import Enum
 from pydantic import BaseModel, Field
+
+
+class GrowthStrategy(str, Enum):
+    """Plant growth allocation strategy"""
+    LEAF_FIRST = "leaf_first"  # Prioritize leaf biomass (e.g., lettuce)
+    STRUCTURE_FIRST = "structure_first"  # Balanced allocation to stem/root (e.g., tomato)
 
 
 class TemperatureResponse(BaseModel):
@@ -43,6 +50,24 @@ class GrowthParameters(BaseModel):
     leaf_area_ratio: float = Field(description="Leaf area per biomass (m²/g)", ge=0)
     optimal_PAR: float = Field(description="Optimal PAR (µmol/m²/s)", ge=0)
     PAR_saturation: float = Field(description="PAR saturation point", ge=0)
+
+    # Growth strategy and biomass allocation
+    growth_strategy: GrowthStrategy = Field(default=GrowthStrategy.STRUCTURE_FIRST, description="Biomass allocation strategy")
+
+    # Biomass partitioning fractions (early growth stage)
+    # These control how new biomass is allocated to different organs
+    leaf_fraction_early: float = Field(default=0.50, description="Fraction to leaves (early)", ge=0, le=1)
+    stem_fraction_early: float = Field(default=0.30, description="Fraction to stem (early)", ge=0, le=1)
+    root_fraction_early: float = Field(default=0.20, description="Fraction to roots (early)", ge=0, le=1)
+
+    # Biomass partitioning fractions (late growth stage)
+    leaf_fraction_late: float = Field(default=0.30, description="Fraction to leaves (late)", ge=0, le=1)
+    stem_fraction_late: float = Field(default=0.40, description="Fraction to stem (late)", ge=0, le=1)
+    root_fraction_late: float = Field(default=0.30, description="Fraction to roots (late)", ge=0, le=1)
+
+    # Specific Leaf Area (SLA) - converts leaf biomass to leaf area
+    # Higher SLA = thinner leaves, more area per gram
+    SLA: float = Field(default=0.020, description="Specific Leaf Area (m²/g leaf biomass)", ge=0)
 
 
 class PhenologyThresholds(BaseModel):
@@ -93,6 +118,7 @@ class PlantProfile(BaseModel):
     created_at: Optional[str] = Field(default=None)
     created_by: Optional[str] = Field(default="system")
     is_default: bool = Field(default=False)
+    boost_hours: int = Field(default=168, description="Hours to apply seedling boost")
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for Firebase storage"""

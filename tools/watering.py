@@ -164,85 +164,160 @@ class WateringTool(BaseTool):
         state: Any,
         wilting_point: float = 15.0,
         optimal_min: float = 30.0,
-        field_capacity: float = 35.0
+        field_capacity: float = 35.0,
+        growth_strategy: str = "leaf_first",
+        root_fraction: float = 0.1,
+        previous_water_stress: float = 0.0
     ) -> float:
         """
-        Calculate adaptive watering amount based on plant size and growth stage
+        Calculate adaptive watering amount based on plant size, growth strategy,
+        and water stress trends.
+
+        STRATEGY-AWARE WATERING:
+        - LEAF_FIRST (lettuce): Higher water needs (1.3x base)
+          - High leaf area = high transpiration
+          - Shallow roots = less efficient water use
+        - STRUCTURE_FIRST (tomato): Lower water needs (0.7x base)
+          - Lower leaf area = lower transpiration initially
+          - Deep roots = better water efficiency
+
+        STRESS-RESPONSIVE WATERING:
+        - If water stress is increasing (current > previous), increase water amount
+        - Prevents stress from escalating to damaging levels
+        - More aggressive intervention for leaf-first plants
 
         IMPORTANT: Seedlings need LESS water than mature plants!
         - Overwatering seedlings causes root rot and fungal growth
         - Small root systems can't absorb large water volumes
         - Gradually increase water as plant grows
 
-        Strategy:
-        1. Seed/tiny seedling (< 1g): Minimal water, keep soil slightly moist
-        2. Small seedling (1-5g): Light watering, avoid saturation
-        3. Medium seedling (5-30g): Moderate watering as roots develop
-        4. Mature plant (> 30g): Full watering based on ET and leaf area
-
         Args:
-            state: Current PlantState with biomass, leaf_area, phenological_stage
+            state: Current PlantState with biomass, leaf_area, phenological_stage, water_stress
             wilting_point: Permanent wilting point (%)
             optimal_min: Lower bound of optimal range (%)
             field_capacity: Field capacity (%)
+            growth_strategy: "leaf_first" or "structure_first"
+            root_fraction: Fraction of biomass in roots (0-1)
+            previous_water_stress: Water stress from previous timestep (0-1)
 
         Returns:
             Recommended water amount in liters
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         biomass = state.biomass
         leaf_area = state.leaf_area
         current_soil_water = state.soil_water
         pot_volume = state.pot_volume
+        current_water_stress = getattr(state, 'water_stress', 0.0)
 
         # Get phenological stage if available
         stage = getattr(state, 'phenological_stage', None)
         stage_name = stage.value if stage else 'unknown'
 
+        # STRATEGY MULTIPLIER: Adjusts base water needs
+        # Leaf-first: Higher water needs (more transpiration)
+        # Structure-first: Lower water needs (root efficiency)
+        if growth_strategy == "leaf_first":
+            strategy_multiplier = 1.3
+        elif growth_strategy == "structure_first":
+            # Root efficiency reduces water needs
+            # Higher root fraction = lower multiplier
+            base_multiplier = 0.7
+            root_efficiency_bonus = min(0.15, (root_fraction - 0.1) * 0.5) if root_fraction > 0.1 else 0
+            strategy_multiplier = base_multiplier - root_efficiency_bonus  # 0.55 - 0.7
+        else:
+            strategy_multiplier = 1.0
+
+        # STRESS-RESPONSIVE ADJUSTMENT
+        # If water stress is increasing, boost water amount
+        stress_boost = 1.0
+        stress_increasing = current_water_stress > previous_water_stress + 0.02  # 2% threshold
+
+        if stress_increasing:
+            # Calculate stress increase rate
+            stress_delta = current_water_stress - previous_water_stress
+
+            # Boost water proportionally to stress increase
+            # More aggressive for leaf-first plants
+            if growth_strategy == "leaf_first":
+                stress_boost = 1.0 + min(0.8, stress_delta * 4.0)  # Up to 80% boost
+            else:
+                stress_boost = 1.0 + min(0.5, stress_delta * 2.5)  # Up to 50% boost
+
+            logger.info(f"Stress increasing ({previous_water_stress:.2f} → {current_water_stress:.2f}), "
+                       f"applying {stress_boost:.2f}x water boost")
+
+        # HIGH STRESS EMERGENCY WATERING
+        # If stress is already high, intervene more aggressively
+        if current_water_stress > 0.5:
+            # High stress: increase target and max water
+            emergency_boost = 1.0 + (current_water_stress - 0.5) * 0.6  # Up to 30% additional
+            stress_boost *= emergency_boost
+            logger.warning(f"High water stress ({current_water_stress:.2f}), emergency boost {emergency_boost:.2f}x")
+
         # ADAPTIVE WATERING BASED ON BIOMASS
         # Strategy: Adjust both target moisture AND maximum water amount
+        # FIX: Use field_capacity as target for medium/large plants to prevent stress
 
         if biomass < 1.0:
             # SEED / TINY SEEDLING: Minimal water
             # Risk: Root rot, damping off, fungal growth
             # Strategy: Keep soil slightly moist, not saturated
-            # Target: Lower than optimal to prevent overwatering
-            target_water = optimal_min - 5.0  # ~25% for tomato
-            max_water_per_day = 0.05  # Max 0.05L (50ml) per day
+            target_water = optimal_min - 3.0  # ~27% for lettuce (slightly higher)
+            max_water_per_day = 0.08 * strategy_multiplier  # Max 0.08L (80ml) per day
 
         elif biomass < 5.0:
             # SMALL SEEDLING: Light watering
             # Risk: Overwatering still dangerous
             # Strategy: Gradual increase as roots develop
-            target_water = optimal_min  # 30% for tomato
-            max_water_per_day = 0.1 + (biomass - 1.0) * 0.025  # 0.1-0.2L
+            target_water = optimal_min + 2.0  # 32% for lettuce
+            max_water_per_day = (0.15 + (biomass - 1.0) * 0.05) * strategy_multiplier  # 0.15-0.35L
 
-        elif biomass < 30.0:
+        elif biomass < 15.0:
             # MEDIUM SEEDLING: Moderate watering
             # Risk: Reduced, but still avoid saturation
-            # Strategy: Increase proportionally to biomass
-            target_water = optimal_min + 2.5  # 32.5% for tomato
-            max_water_per_day = 0.2 + (biomass - 5.0) * 0.012  # 0.2-0.5L
+            # Strategy: Water to near field capacity
+            target_water = optimal_min + (field_capacity - optimal_min) * 0.5  # Midpoint
+            max_water_per_day = (0.4 + (biomass - 5.0) * 0.04) * strategy_multiplier  # 0.4-0.8L
+
+        elif biomass < 30.0:
+            # LARGER SEEDLING: More aggressive watering
+            # Strategy: Water to field capacity
+            target_water = field_capacity  # 45% for lettuce
+            max_water_per_day = (0.8 + (biomass - 15.0) * 0.05) * strategy_multiplier  # 0.8-1.55L
 
         else:
             # MATURE PLANT: Full watering based on ET
             # Risk: Low, established root system
-            # Strategy: Maintain optimal moisture, can handle larger volumes
-            target_water = field_capacity  # 35% for tomato
+            # Strategy: Maintain field capacity, large volumes allowed
+            target_water = field_capacity  # 45% for lettuce
 
             # Calculate water need based on leaf area (proxy for ET)
             # Larger leaf area = more transpiration = more water needed
-            # Typical ET: 0.3 L/h/m² × 24h = 7.2 L/day/m²
-            estimated_daily_et = leaf_area * 7.2  # L/day
-            max_water_per_day = estimated_daily_et * 1.2  # +20% safety margin
+            # FIX: Use realistic ET rate for indoor plants: 0.15 L/h/m² × 14h light = 2.1 L/day/m²
+            estimated_daily_et = leaf_area * 2.5  # L/day (conservative)
+            max_water_per_day = max(1.5, estimated_daily_et * 1.5) * strategy_multiplier  # Min 1.5L, +50% safety
+
+        # Apply stress boost to max water
+        max_water_per_day *= stress_boost
+
+        # STRESS-RESPONSIVE TARGET ADJUSTMENT
+        # If stress is increasing, raise the target moisture level
+        if stress_increasing and current_water_stress > 0.2:
+            # Raise target by up to 5% when stress is increasing
+            target_boost = min(5.0, (current_water_stress - 0.2) * 10.0)
+            target_water = min(field_capacity, target_water + target_boost)
+            logger.debug(f"Raised target water to {target_water:.1f}% due to stress")
 
         # Calculate water needed to reach target
         if current_soil_water >= target_water:
             # Already at or above target - no watering needed
-            # DEBUG
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.debug(f"Adaptive watering: NO WATER - soil {current_soil_water:.1f}% >= target {target_water:.1f}%")
-            return 0.0
+            # UNLESS stress is high and increasing
+            if not (stress_increasing and current_water_stress > 0.3):
+                logger.debug(f"Adaptive watering: NO WATER - soil {current_soil_water:.1f}% >= target {target_water:.1f}%")
+                return 0.0
 
         water_deficit_percent = target_water - current_soil_water
         water_needed_L = (water_deficit_percent / 100) * pot_volume
@@ -251,22 +326,18 @@ class WateringTool(BaseTool):
         water_amount = min(water_needed_L, max_water_per_day)
 
         # Never water if soil is already very wet (> field capacity)
-        if current_soil_water > field_capacity:
-            import logging
-            logger = logging.getLogger(__name__)
+        # UNLESS stress is somehow still high (possible waterlogging issue)
+        if current_soil_water > field_capacity and current_water_stress < 0.3:
             logger.debug(f"Adaptive watering: NO WATER - soil {current_soil_water:.1f}% > field capacity {field_capacity:.1f}%")
             return 0.0
 
         # Minimum threshold: don't water if deficit is tiny
-        if water_needed_L < 0.01:  # Less than 10ml
-            import logging
-            logger = logging.getLogger(__name__)
+        if water_needed_L < 0.01 and not stress_increasing:  # Less than 10ml
             logger.debug(f"Adaptive watering: NO WATER - deficit too small ({water_needed_L*1000:.1f}ml)")
             return 0.0
 
-        # DEBUG
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.debug(f"Adaptive watering: {water_amount:.3f}L (biomass={biomass:.2f}g, soil={current_soil_water:.1f}%, target={target_water:.1f}%)")
+        logger.debug(f"Adaptive watering: {water_amount:.3f}L (biomass={biomass:.2f}g, "
+                    f"soil={current_soil_water:.1f}%, target={target_water:.1f}%, "
+                    f"strategy={growth_strategy}, stress_boost={stress_boost:.2f}x)")
 
         return max(0.0, water_amount)

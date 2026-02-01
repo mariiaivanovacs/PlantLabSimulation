@@ -32,10 +32,20 @@ class PlantState(BaseModel):
     
     # Plant physiological state
     biomass: float = Field(default=0.5, description="Total biomass (g)", ge=0)
+
+    # Organ-specific biomass (for growth strategy partitioning)
+    leaf_biomass: float = Field(default=0.25, description="Leaf biomass (g)", ge=0)
+    stem_biomass: float = Field(default=0.15, description="Stem biomass (g)", ge=0)
+    root_biomass: float = Field(default=0.10, description="Root biomass (g)", ge=0)
+
     leaf_area: float = Field(default=0.002, description="Leaf area (m²)", ge=0)
     phenological_stage: PhenologicalStage = Field(default=PhenologicalStage.SEEDLING)
     thermal_time: float = Field(default=0, description="Accumulated growing degree hours (°C·h)", ge=0)
     is_alive: bool = Field(default=True)
+
+    # Seed reserves (for germination and early growth)
+    seed_reserves: float = Field(default=0.3, description="Remaining seed energy reserves (g)", ge=0)
+    initial_seed_reserves: float = Field(default=0.3, description="Initial seed reserves at germination (g)", ge=0)
     
     # Damage and stress
     cumulative_damage: float = Field(default=0, description="Irreversible damage (%)", ge=0, le=100)

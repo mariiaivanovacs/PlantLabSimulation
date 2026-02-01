@@ -9,7 +9,8 @@ from .plant_profile import (
     WaterRequirements,
     NutrientDemand,
     GrowthParameters,
-    PhenologyThresholds
+    PhenologyThresholds,
+    GrowthStrategy
 )
 from .tools import (
     ToolType,
@@ -40,6 +41,7 @@ __all__ = [
     'NutrientDemand',
     'GrowthParameters',
     'PhenologyThresholds',
+    'GrowthStrategy',
 
     # Tools
     'ToolType',

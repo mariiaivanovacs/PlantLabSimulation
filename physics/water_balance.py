@@ -257,6 +257,9 @@ def update_soil_water(
 
     # Water balance equation
     new_soil_water = soil_water + irrigation_percent - ET_percent - drainage
+    
+    with open("data/records/soil_water.txt", "a") as f:
+        f.write(f"{soil_water},{new_soil_water},{irrigation_percent},{ET_percent},{drainage}\n")
 
     # Handle runoff (water above saturation runs off)
     runoff = 0.0
@@ -324,7 +327,9 @@ def calculate_water_stress(
     saturation: float,
     hours_without_water: float = 0.0,
     previous_stress: float = 0.0,
-    dt: float = 1.0
+    dt: float = 1.0,
+    root_fraction: float = 0.0,
+    growth_strategy: str = "leaf_first"
 ) -> tuple[float, float]:
     """
     Calculate water stress factor with TIME-BASED EXPONENTIAL ACCUMULATION
@@ -375,6 +380,30 @@ def calculate_water_stress(
             instantaneous_stress = (soil_water - optimal_max) / (saturation - optimal_max)
     else:
         instantaneous_stress = 0.8  # Near saturation waterlogging stress
+
+    # ROOT EFFICIENCY MODULATION
+    # Structure-first plants with higher root fraction experience reduced stress
+    # because they can extract water more efficiently from soil
+    if root_fraction > 0.1 and growth_strategy == "structure_first":
+        # Root efficiency bonus: 0-30% stress reduction based on root fraction
+        # root_fraction 0.1 → 0% reduction (baseline)
+        # root_fraction 0.2 → 15% reduction
+        # root_fraction 0.3+ → 30% reduction
+        root_efficiency_factor = min(0.3, (root_fraction - 0.1) * 1.5)
+        instantaneous_stress *= (1.0 - root_efficiency_factor)
+
+    # GROWTH STRATEGY MODULATION
+    # Leaf-first plants are more vulnerable to water stress (shallow roots, high transpiration)
+    # Structure-first plants are more resilient (deep roots, lower transpiration)
+    if growth_strategy == "leaf_first":
+        # Leaf-first: 10% more vulnerable to stress
+        instantaneous_stress *= 1.1
+    elif growth_strategy == "structure_first":
+        # Structure-first: 15% more resilient to stress
+        instantaneous_stress *= 0.85
+
+    # Clamp to [0, 1] after modulation
+    instantaneous_stress = max(0.0, min(1.0, instantaneous_stress))
 
     # Update hours without adequate water
     if soil_water < optimal_min:

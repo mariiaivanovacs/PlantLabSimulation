@@ -214,6 +214,27 @@ def display_final_summary(engine: SimulationEngine, total_co2_fluxes: dict, star
         for tool, count in sorted(tool_counts.items(), key=lambda x: x[1], reverse=True):
             print(f"  {tool:20s} {count:8d} times")
 
+    # Resource Usage Summary (Daily Regime)
+    print(f"\n{CYAN}{BOLD}RESOURCE USAGE (Daily Regime){RESET}")
+
+    # Water usage
+    if engine.total_water_supplied_L > 0:
+        avg_water_per_application = engine.total_water_supplied_L / engine.water_applications if engine.water_applications > 0 else 0
+        print(f"  💧 Total Water Supplied:     {engine.total_water_supplied_L:8.3f} L")
+        print(f"  💧 Water Applications:       {engine.water_applications:8d} times")
+        print(f"  💧 Average per Application:  {avg_water_per_application:8.3f} L")
+    else:
+        print(f"  💧 No water supplied via daily regime")
+
+    # CO2 usage
+    if engine.total_co2_injected_g > 0:
+        avg_co2_per_injection = engine.total_co2_injected_g / engine.co2_injections if engine.co2_injections > 0 else 0
+        print(f"  🌫️  Total CO2 Injected:       {engine.total_co2_injected_g:8.3f} g")
+        print(f"  🌫️  CO2 Injections:          {engine.co2_injections:8d} times")
+        print(f"  🌫️  Average per Injection:   {avg_co2_per_injection:8.3f} g")
+    else:
+        print(f"  🌫️  No CO2 injected via daily regime")
+
     print(f"\n{BOLD}{'='*80}{RESET}")
     print(f"{BOLD}{'END OF SIMULATION':^80}{RESET}")
     print(f"{BOLD}{'='*80}{RESET}\n")

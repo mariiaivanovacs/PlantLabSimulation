@@ -33,3 +33,8 @@ firebase-credentials.json
 
 # files with test in the name
 test_*.py
+
+# data/records folder
+data/records/RGR.txt
+data/backup/out*
+data/backup/out_last_try/
