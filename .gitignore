@@ -38,3 +38,4 @@ test_*.py
 data/records/RGR.txt
 data/backup/out*
 data/backup/out_last_try/
+data/records/
