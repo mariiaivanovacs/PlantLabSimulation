@@ -258,8 +258,8 @@ def update_soil_water(
     # Water balance equation
     new_soil_water = soil_water + irrigation_percent - ET_percent - drainage
     
-    with open("data/records/soil_water.txt", "a") as f:
-        f.write(f"{soil_water},{new_soil_water},{irrigation_percent},{ET_percent},{drainage}\n")
+    # with open("data/records/soil_water.txt", "a") as f:
+    #     f.write(f"{soil_water},{new_soil_water},{irrigation_percent},{ET_percent},{drainage}\n")
 
     # Handle runoff (water above saturation runs off)
     runoff = 0.0
@@ -448,14 +448,14 @@ def calculate_water_stress(
     new_stress = max(0.0, min(1.0, new_stress))
 
     # Log to file
-    try:
-        with open("data/records/water_stress.txt", "a") as f:
-            f.write(
-                f"{soil_water},{wilting_point},{optimal_min},{optimal_max},{saturation},"
-                f"{instantaneous_stress:.4f},{new_stress:.4f},{hours_without_water:.1f},{new_hours_without_water:.1f}\n"
-            )
-    except Exception as e:
-        print(f"[WaterStress Log Error] {e}")
+    # try:
+    #     with open("data/records/water_stress.txt", "a") as f:
+    #         f.write(
+    #             f"{soil_water},{wilting_point},{optimal_min},{optimal_max},{saturation},"
+    #             f"{instantaneous_stress:.4f},{new_stress:.4f},{hours_without_water:.1f},{new_hours_without_water:.1f}\n"
+    #         )
+    # except Exception as e:
+    #     print(f"[WaterStress Log Error] {e}")
 
     return new_stress, new_hours_without_water
 

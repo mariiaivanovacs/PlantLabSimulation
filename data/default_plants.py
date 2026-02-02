@@ -60,7 +60,7 @@ def get_tomato_profile() -> PlantProfile:
     """
     return PlantProfile(
         profile_id="tomato_standard",
-        species_name="Solanum lycopersicum",
+        species_name="Solanum lycopersicum (tomato)",
         common_names=["Tomato", "Garden Tomato"],
         description="Standard indeterminate tomato cultivar for controlled environment",
         
@@ -265,7 +265,7 @@ def get_lettuce_profile() -> PlantProfile:
     """
     return PlantProfile(
         profile_id="lettuce_butterhead",
-        species_name="Lactuca sativa",
+        species_name="Lactuca sativa (lettuce)",
         common_names=["Lettuce", "Butterhead Lettuce"],
         description="Fast-growing butterhead lettuce for hydroponic/indoor growing",
         
@@ -374,7 +374,7 @@ def get_basil_profile() -> PlantProfile:
     """
     return PlantProfile(
         profile_id="basil_sweet",
-        species_name="Ocimum basilicum",
+        species_name="Ocimum basilicum (basil) - experimental",
         common_names=["Sweet Basil", "Genovese Basil"],
         description="Sweet basil cultivar for culinary use, excellent for indoor growing",
         

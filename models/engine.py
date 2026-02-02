@@ -79,6 +79,10 @@ from tools.humidity import HumidityTool
 from tools.ventilation import VentilationTool
 from tools.co2_control import CO2ControlTool
 
+# Import monitor and reasoning agents
+from agents.monitor import MonitorAgent, MonitorThresholds
+from agents.reasoning import ReasoningAgent
+
 # Setup logging
 logger = logging.getLogger(__name__)
 
@@ -155,6 +159,9 @@ class SimulationEngine:
         self.water_applications: int = 0          # Number of times water was applied
         self.co2_injections: int = 0              # Number of times CO2 was injected
 
+        # Initialize Monitor Agent with thresholds from plant profile
+        self._init_monitor_agent()
+
         logger.info(f"Initialized simulation {self.simulation_id} with plant {self.plant_id}")
 
     def _init_tools(self) -> None:
@@ -168,6 +175,32 @@ class SimulationEngine:
             ToolType.VENTILATION: VentilationTool(),
             ToolType.CO2_CONTROL: CO2ControlTool(),
         }
+
+    def _init_monitor_agent(self) -> None:
+        """Initialize Monitor Agent with thresholds from plant profile"""
+        # Create thresholds from plant profile
+        thresholds = MonitorThresholds.from_plant_profile(self.plant_profile)
+
+        # Initialize Monitor Agent
+        self.monitor_agent = MonitorAgent(
+            thresholds=thresholds,
+            output_dir="out",
+            plant_id=self.plant_id,
+            simulation_id=self.simulation_id,
+            profile_id=self.plant_profile.profile_id
+        )
+
+        # Initialize Reasoning Agent (skeleton)
+        self.reasoning_agent = ReasoningAgent(
+            plant_id=self.plant_id,
+            simulation_id=self.simulation_id,
+            log_dir="out/reasoning"
+        )
+
+        # Monitor enabled by default
+        self.monitor_enabled: bool = True
+
+        logger.info(f"Monitor Agent initialized with profile thresholds")
 
     def _create_initial_state(self) -> PlantState:
         """Create initial plant state from profile"""
@@ -229,8 +262,8 @@ class SimulationEngine:
 
             relative_humidity=(self.plant_profile.optimal_RH_min + self.plant_profile.optimal_RH_max) / 2,
             VPD=1.0,
-            # light_PAR=self.plant_profile.growth.optimal_PAR,
-            light_PAR=0,
+            light_PAR=self.plant_profile.growth.optimal_PAR,
+            # light_PAR=,
 
             CO2=initial_co2,
             ET=0,
@@ -337,16 +370,16 @@ class SimulationEngine:
         target_temp = self.plant_profile.temperature.T_opt
         temp_tolerance = 2.0  # Only adjust if more than 2°C away from target
 
-        # if abs(self.state.air_temp - target_temp) > temp_tolerance:
-        #     action = ToolAction(
-        #         tool_type=ToolType.HVAC,
-        #         parameters={
-        #             'target_temp_C': target_temp,
-        #             'max_rate_C_per_h': 5.0  # Max 5°C change per hour
-        #         }
-        #     )
-        #     result = self.apply_tool(action)
-        #     logger.debug(f"Daily regime - HVAC: {result.message}")
+        if abs(self.state.air_temp - target_temp) > temp_tolerance:
+            action = ToolAction(
+                tool_type=ToolType.HVAC,
+                parameters={
+                    'target_temp_C': target_temp,
+                    'max_rate_C_per_h': 5.0  # Max 5°C change per hour
+                }
+            )
+            result = self.apply_tool(action)
+            logger.debug(f"Daily regime - HVAC: {result.message}")
         
         # implement smooth temp control towards target temp
         # temp_diff = target_temp - self.state.air_temp
@@ -696,6 +729,9 @@ class SimulationEngine:
         # 14. Save checkpoint
         self._save_checkpoint()
 
+        # 15. Run Monitor Agent check (outputs only on WARNING/CRITICAL)
+        self._run_monitor_check()
+
     def _update_vpd(self) -> None:
         """Calculate and update VPD"""
         self.state.VPD = calculate_vpd(
@@ -818,8 +854,8 @@ class SimulationEngine:
         effective_PAR = self.state.light_PAR * light_factor
         print(f"Effective PAR: {effective_PAR}")
         
-        with open('data/records/photosynthesis.txt', 'a') as f:
-            f.write(f"{effective_PAR}, {self.state.light_PAR}, {light_factor}\n")   
+        # with open('data/records/photosynthesis.txt', 'a') as f:
+        #     f.write(f"{effective_PAR}, {self.state.light_PAR}, {light_factor}\n")   
 
         # Calculate ground area based on plant size (scales with growth)
         # Starts at 0.0025 m² (5x5cm) for seedlings, grows to 0.04 m² (20x20cm) at maturity
@@ -989,8 +1025,8 @@ class SimulationEngine:
                 hours_since_emergence=self.state.hour,
                 biomass=self.state.biomass
             )
-        with open('data/records/leaf.txt', 'a') as f:
-            f.write(f"{self.state.hour},{self.state.leaf_area}\n")
+        # with open('data/records/leaf.txt', 'a') as f:
+        #     f.write(f"{self.state.hour},{self.state.leaf_area}\n")
         
 
     def _update_co2(self) -> None:
@@ -1255,6 +1291,30 @@ class SimulationEngine:
         checkpoint['co2_fluxes'] = self.co2_fluxes.copy()
         self.history.append(checkpoint)
 
+    def _run_monitor_check(self) -> None:
+        """
+        Run Monitor Agent check every hour.
+        Outputs to /out only if WARNING or CRITICAL detected.
+        Routes alerts to ReasoningAgent.
+        """
+        if not self.monitor_enabled:
+            return
+
+        # Run monitor check - returns output only if WARNING/CRITICAL
+        alert = self.monitor_agent.check(
+            state=self.state,
+            reasoning_agent=self.reasoning_agent
+        )
+
+        if alert:
+            severity = alert.get("routing", {}).get("highest_severity", "UNKNOWN")
+            logger.info(f"Monitor detected {severity} at hour {self.state.hour}")
+
+    def set_monitor_enabled(self, enabled: bool) -> None:
+        """Enable or disable the monitor agent"""
+        self.monitor_enabled = enabled
+        logger.info(f"Monitor Agent {'enabled' if enabled else 'disabled'}")
+
     def get_state(self) -> PlantState:
         """Get current plant state"""
         return self.state
@@ -1281,6 +1341,12 @@ class SimulationEngine:
         self.scheduled_actions = []
         self.co2_fluxes = {}
         self.ventilation_rate = 0.0
+
+        # Reset monitor and reasoning agents
+        if hasattr(self, 'monitor_agent'):
+            self.monitor_agent.reset()
+        if hasattr(self, 'reasoning_agent'):
+            self.reasoning_agent.reset()
 
     def get_summary(self) -> Dict[str, Any]:
         """Get simulation summary"""

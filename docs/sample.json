@@ -1,0 +1,105 @@
+{
+  "meta": {
+    "timestamp": 1738512000,
+    "plant_id": "sol_001",
+    "simulation_id": "sim_20240615_001",
+    "profile_id": "tomato_standard",
+    "hour": 67,
+    "local_time": "19:00",
+    "is_daytime": true,
+    "pot_volume": 5,
+    "room_volume": 50
+  },
+  "metrics": {
+    "biomass": 12.5,
+    "leaf_biomass": 6.2,
+    "stem_biomass": 4.0,
+    "root_biomass": 2.3,
+    "leaf_area": 0.045,
+    "phenological_stage": "SEEDLING",
+    "thermal_time": 450.5,
+    "is_alive": true,
+    "cumulative_damage": 2.5,
+    "water_stress": 0.15,
+    "temp_stress": 0.08,
+    "nutrient_stress": 0.02,
+    "soil_water": 28.5,
+    "soil_temp": 23.69,
+    "soil_N": 120.0,
+    "soil_P": 15.0,
+    "soil_K": 300,
+    "soil_EC": 1.2,
+    "soil_pH": 6.5,
+    "air_temp": 29.0,
+    "relative_humidity": 55.0,
+    "VPD": 1.95,
+    "light_PAR": 450,
+    "CO2": 850.0,
+    "ET": 0.012,
+    "photosynthesis": 0.008,
+    "respiration": 0.003,
+    "growth_rate": 0.005,
+    "RGR": 0.0004,
+    "pot_volume": 5,
+    "room_volume": 50
+  },
+  "species_thresholds_reference": {
+    "temp_opt_c": 25.0,
+    "vpd_opt_kpa": 1.0,
+    "vpd_warning_kpa": 1.8,
+    "soil_wilting_point_percent": 15.0,
+    "soil_field_capacity_percent": 35.0,
+    "par_optimal_umol_m2_s": 600,
+    "par_warning_percent_of_target": 20,
+    "ec_toxicity_threshold_ms_cm": 3.5,
+    "pH_min": 5.0,
+    "pH_max": 8.0
+  },
+  "health_flags": {
+    "info": [
+      {
+        "flag": "SOIL_BELOW_FIELD_CAPACITY",
+        "metric": "soil_water_percent",
+        "value": 28.5,
+        "threshold": 35.0,
+        "duration_hours": 0,
+        "trigger_type": "species_threshold",
+        "severity": "INFO"
+      },
+      {
+        "flag": "TEMPERATURE_SUBOPTIMAL",
+        "metric": "air_temp_delta_C",
+        "value": 4.0,
+        "threshold": 1.0,
+        "duration_hours": 0,
+        "trigger_type": "species_threshold",
+        "severity": "INFO"
+      }
+    ],
+    "warning": [
+      {
+        "flag": "VPD_HIGH_PERSISTENT",
+        "metric": "VPD_kPa",
+        "value": 1.95,
+        "threshold": 1.8,
+        "duration_hours": 4,
+        "trigger_type": "duration_exceeded",
+        "severity": "WARNING"
+      },
+      {
+        "flag": "TEMPERATURE_DEVIATION_PERSISTENT",
+        "metric": "air_temp_delta_C",
+        "value": 4.0,
+        "threshold": 3.0,
+        "duration_hours": 3,
+        "trigger_type": "duration_exceeded",
+        "severity": "WARNING"
+      }
+    ],
+    "critical": []
+  },
+  "routing": {
+    "highest_severity": "WARNING",
+    "route_to": "REASONING_AGENT"
+  }
+}

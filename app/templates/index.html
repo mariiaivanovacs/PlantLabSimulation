@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PlantLab Simulation</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #4ecca3;
+            margin-bottom: 10px;
+            font-size: 2rem;
+        }
+
+        .subtitle {
+            color: #888;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            border: 1px solid #0f3460;
+        }
+
+        .card h2 {
+            color: #4ecca3;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            color: #aaa;
+            font-size: 0.9rem;
+        }
+
+        select, input[type="number"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #0f3460;
+            border-radius: 8px;
+            background: #1a1a2e;
+            color: #fff;
+            font-size: 1rem;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: #4ecca3;
+        }
+
+        .mode-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 12px 20px;
+            border: 2px solid #0f3460;
+            border-radius: 8px;
+            background: transparent;
+            color: #888;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+        }
+
+        .mode-btn:hover {
+            border-color: #4ecca3;
+            color: #4ecca3;
+        }
+
+        .mode-btn.active {
+            border-color: #4ecca3;
+            background: rgba(78, 204, 163, 0.1);
+            color: #4ecca3;
+        }
+
+        .speed-options {
+            display: none;
+        }
+
+        .speed-options.visible {
+            display: block;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #4ecca3;
+            color: #1a1a2e;
+        }
+
+        .btn-primary:hover {
+            background: #3db892;
+        }
+
+        .btn-primary:disabled {
+            background: #2a6b55;
+            cursor: not-allowed;
+        }
+
+        .btn-danger {
+            background: #e94560;
+            color: #fff;
+        }
+
+        .btn-danger:hover {
+            background: #d63850;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 16px;
+            background: #1a1a2e;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #888;
+        }
+
+        .status-dot.running {
+            background: #4ecca3;
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-dot.stopped {
+            background: #e94560;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .info-text {
+            color: #888;
+            font-size: 0.85rem;
+            margin-top: 8px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .metric {
+            background: #1a1a2e;
+            padding: 12px;
+            border-radius: 8px;
+        }
+
+        .metric-label {
+            color: #888;
+            font-size: 0.8rem;
+            margin-bottom: 4px;
+        }
+
+        .metric-value {
+            color: #4ecca3;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .terminal-hint {
+            background: #0f3460;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .terminal-hint code {
+            color: #4ecca3;
+            font-family: 'Monaco', 'Menlo', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PlantLab Simulation</h1>
+        <p class="subtitle">Plant growth simulation with monitor agent</p>
+
+        <!-- Status Card -->
+        <div class="card">
+            <div class="status">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Not running</span>
+            </div>
+            <div id="runningInfo" class="hidden">
+                <div class="metrics">
+                    <div class="metric">
+                        <div class="metric-label">Plant</div>
+                        <div class="metric-value" id="plantName">-</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Hour</div>
+                        <div class="metric-value" id="simHour">-</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Biomass</div>
+                        <div class="metric-value" id="biomass">-</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Stage</div>
+                        <div class="metric-value" id="stage">-</div>
+                    </div>
+                </div>
+                <button class="btn btn-danger" style="margin-top: 16px;" onclick="stopSimulation()">
+                    Stop Simulation
+                </button>
+            </div>
+        </div>
+
+        <!-- Start Form Card -->
+        <div class="card" id="startCard">
+            <h2>Start New Simulation</h2>
+
+            <div class="form-group">
+                <label for="plantSelect">Plant Profile</label>
+                <select id="plantSelect">
+                    <option value="tomato">Tomato</option>
+                    <option value="lettuce">Lettuce</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="daysInput">Duration (days)</label>
+                <input type="number" id="daysInput" value="30" min="1" max="365">
+            </div>
+
+            <div class="form-group">
+                <label>Simulation Mode</label>
+                <div class="mode-selector">
+                    <button class="mode-btn active" data-mode="speed" onclick="selectMode('speed')">
+                        Speed Mode
+                    </button>
+                    <button class="mode-btn" data-mode="realtime" onclick="selectMode('realtime')">
+                        Real-time Mode
+                    </button>
+                </div>
+            </div>
+
+            <div class="speed-options visible" id="speedOptions">
+                <div class="form-group">
+                    <label for="hoursPerTick">Hours per tick</label>
+                    <select id="hoursPerTick">
+                        <option value="1">1 hour (detailed)</option>
+                        <option value="6">6 hours</option>
+                        <option value="12">12 hours</option>
+                        <option value="24" selected>24 hours (1 day)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="tickDelay">Tick delay (seconds)</label>
+                    <input type="number" id="tickDelay" value="0.5" min="0" max="10" step="0.1">
+                </div>
+            </div>
+
+            <div id="realtimeInfo" class="info-text hidden">
+                Real-time mode: Simulation advances 1 hour every real hour.
+                Perfect for long-running, low-energy monitoring.
+            </div>
+
+            <button class="btn btn-primary" id="startBtn" onclick="startSimulation()">
+                Start Simulation
+            </button>
+
+            <div class="terminal-hint">
+                <strong>Note:</strong> Output is displayed in the terminal where Flask is running.<br>
+                Run with: <code>python run.py</code>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentMode = 'speed';
+        let pollInterval = null;
+
+        function selectMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.mode === mode);
+            });
+            document.getElementById('speedOptions').classList.toggle('visible', mode === 'speed');
+            document.getElementById('realtimeInfo').classList.toggle('hidden', mode !== 'realtime');
+        }
+
+        async function loadPlants() {
+            try {
+                const response = await fetch('/api/simulation/plants');
+                const data = await response.json();
+                if (data.success) {
+                    const select = document.getElementById('plantSelect');
+                    select.innerHTML = '';
+                    data.plants.forEach(plant => {
+                        const option = document.createElement('option');
+                        option.value = plant.id;
+                        option.textContent = plant.name;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (e) {
+                console.error('Failed to load plants:', e);
+            }
+        }
+
+        async function startSimulation() {
+            const plant = document.getElementById('plantSelect').value;
+            const days = parseInt(document.getElementById('daysInput').value);
+            const hoursPerTick = parseInt(document.getElementById('hoursPerTick').value);
+            const tickDelay = parseFloat(document.getElementById('tickDelay').value);
+
+            const body = {
+                plant_name: plant,
+                days: days,
+                mode: currentMode,
+                hours_per_tick: hoursPerTick,
+                tick_delay: tickDelay
+            };
+
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('startBtn').textContent = 'Starting...';
+
+            try {
+                const response = await fetch('/api/simulation/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    updateUI(true, data.config);
+                    startPolling();
+                } else {
+                    alert('Failed to start: ' + data.error);
+                }
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
+
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('startBtn').textContent = 'Start Simulation';
+        }
+
+        async function stopSimulation() {
+            try {
+                const response = await fetch('/api/simulation/stop', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    updateUI(false);
+                    stopPolling();
+                }
+            } catch (e) {
+                console.error('Failed to stop:', e);
+            }
+        }
+
+        async function pollStatus() {
+            try {
+                const response = await fetch('/api/simulation/state');
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('simHour').textContent = data.state.hour;
+                    document.getElementById('biomass').textContent = data.state.biomass.toFixed(2) + 'g';
+                    document.getElementById('stage').textContent = data.state.phenological_stage;
+
+                    if (!data.running) {
+                        updateUI(false);
+                        stopPolling();
+                    }
+                } else {
+                    updateUI(false);
+                    stopPolling();
+                }
+            } catch (e) {
+                console.error('Poll failed:', e);
+            }
+        }
+
+        function startPolling() {
+            if (pollInterval) clearInterval(pollInterval);
+            pollInterval = setInterval(pollStatus, 2000);
+        }
+
+        function stopPolling() {
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+        }
+
+        function updateUI(running, config = null) {
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            const runningInfo = document.getElementById('runningInfo');
+            const startCard = document.getElementById('startCard');
+
+            if (running) {
+                statusDot.className = 'status-dot running';
+                statusText.textContent = 'Running';
+                runningInfo.classList.remove('hidden');
+                startCard.classList.add('hidden');
+                if (config) {
+                    document.getElementById('plantName').textContent = config.plant_name;
+                }
+            } else {
+                statusDot.className = 'status-dot stopped';
+                statusText.textContent = 'Not running';
+                runningInfo.classList.add('hidden');
+                startCard.classList.remove('hidden');
+            }
+        }
+
+        // Check initial status
+        async function checkStatus() {
+            try {
+                const response = await fetch('/api/simulation/state');
+                const data = await response.json();
+                if (data.success && data.running) {
+                    updateUI(true, data.config);
+                    startPolling();
+                }
+            } catch (e) {
+                // Not running
+            }
+        }
+
+        // Initialize
+        loadPlants();
+        checkStatus();
+    </script>
+</body>
+</html>

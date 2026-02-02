@@ -6,7 +6,7 @@ import os
 FLASK_ENV = os.getenv('FLASK_ENV', 'development')
 FLASK_DEBUG = os.getenv('FLASK_DEBUG', 'True') == 'True'
 HOST = os.getenv('HOST', '0.0.0.0')
-PORT = int(os.getenv('PORT', 5000))
+PORT = int(os.getenv('PORT', 5010))
 
 # Simulation settings
 DEFAULT_TIME_STEP_HOURS = 1.0

@@ -234,8 +234,8 @@ def calculate_photosynthesis(
     # --- 6. Gross photosynthesis ---
     P_gross = LUE_effective * PAR_absorbed * f_temp * f_nutrient
 
-    with open('data/records/photosynthesis.txt', 'a') as f:
-        f.write(f"{P_gross}, {light_PAR}, {light_interception}, {stress_factor:.3f}\n")
+    # with open('data/records/photosynthesis.txt', 'a') as f:
+    #     f.write(f"{P_gross}, {light_PAR}, {light_interception}, {stress_factor:.3f}\n")
 
     return max(0.0, P_gross)
 
@@ -285,8 +285,8 @@ def calculate_respiration(
 
     # Temperature-dependent respiration
     R_maint = r_base * biomass * temp_factor
-    with open('data/records/respiration.txt', 'a') as f:
-        f.write(f"{R_maint}, {biomass}, {air_temp}, {temp_factor:.3f}\n")
+    # with open('data/records/respiration.txt', 'a') as f:
+    #     f.write(f"{R_maint}, {biomass}, {air_temp}, {temp_factor:.3f}\n")
 
     return max(0, R_maint)
 
@@ -651,8 +651,8 @@ def update_leaf_area(
         # Shrinking (biomass loss): allow leaf area to decrease
         leaf_area = potential_leaf_area
         
-    with open('data/records/leaf.txt', 'a') as f:
-        f.write(f"{biomass},{leaf_area}, {combined_expansion_factor}\n")
+    # with open('data/records/leaf.txt', 'a') as f:
+    #     f.write(f"{biomass},{leaf_area}, {combined_expansion_factor}\n")
 
     return max(0, leaf_area)
 
@@ -820,8 +820,8 @@ def calculate_RGR(
         RGR_actual = 0.0015
 
     # Log for debugging
-    with open('data/records/RGR.txt', 'a') as f:
-        f.write(f"{hour}, {biomass}, {delta_biomass}, {boost}, {water_stress}, {stress_factor:.3f}, {stress_multiplier:.3f}, {RGR_actual}\n")
+    # with open('data/records/RGR.txt', 'a') as f:
+    #     f.write(f"{hour}, {biomass}, {delta_biomass}, {boost}, {water_stress}, {stress_factor:.3f}, {stress_multiplier:.3f}, {RGR_actual}\n")
 
     return RGR_actual
 

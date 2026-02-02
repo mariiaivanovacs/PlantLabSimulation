@@ -10,10 +10,17 @@ Advanced plant growth simulation with Flask API and multi-agent control system.
 pip install -r requirements.txt
 
 # Run Flask server
-python run.py
+python run.py # via UI 
+or 
+# Run simulation directly (new way)
+python run.py --run --plant lettuce --days 14 --no-monitor
+
+# Old version - more trustfull currently
+python run_simulation.py --plant tomato_standard  --daily_regime True  --speed 24
+
 ```
 
-Server: **http://localhost:5000**
+Server: **http://localhost:5010**
 
 ### CLI Mode
 ```bash
@@ -93,12 +100,12 @@ plant_simulator/
 ### API
 ```bash
 # Start simulation
-curl -X POST http://localhost:5000/api/simulation/start \
+curl -X POST http://localhost:5010/api/simulation/start \
   -H "Content-Type: application/json" \
   -d '{"plant_type": "tomato", "duration_days": 30}'
 
 # Get state
-curl http://localhost:5000/api/simulation/state
+curl http://localhost:5010/api/simulation/state
 ```
 
 ### CLI
