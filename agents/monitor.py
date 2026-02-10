@@ -226,6 +226,42 @@ class MonitorAgent:
         """Check WARNING-level conditions"""
         warnings = []
         th = self.thresholds
+        
+        
+        # add here water stress check temperature and nutrient stress checks if needed
+        if state.water_stress > 0.3:
+            flag = HealthFlag(
+                flag="HIGH_WATER_STRESS",
+                metric="water_stress",
+                value=state.water_stress,
+                threshold=0.7,
+                duration_hours=0,
+                trigger_type="species_threshold",
+                severity=Severity.WARNING.value
+            )
+            warnings.append(flag)
+        if state.nutrient_stress > 0.3:
+            flag = HealthFlag(
+                flag="HIGH_NUTRIENT_STRESS",
+                metric="nutrient_stress",
+                value=state.nutrient_stress,
+                threshold=0.7,
+                duration_hours=0,
+                trigger_type="species_threshold",
+                severity=Severity.WARNING.value
+            )
+            warnings.append(flag)
+        if state.temp_stress > 0.3:
+            flag = HealthFlag(
+                flag="HIGH_TEMPERATURE_STRESS",
+                metric="temp_stress",
+                value=state.temp_stress,
+                threshold=0.7,
+                duration_hours=0,
+                trigger_type="species_threshold",
+                severity=Severity.WARNING.value
+            )
+            warnings.append(flag)
 
         # 1. Temperature deviation > 3°C for > 2h
         temp_delta = abs(state.air_temp - th.temp_opt)
@@ -552,6 +588,8 @@ class MonitorAgent:
         Returns output dict if WARNING or CRITICAL detected, None otherwise.
         Routes to reasoning agent if provided.
         """
+        logger.info(f"Monitor check at hour {state.hour}")
+        logger.info(f"Reasoning agent provided: {'Yes' if reasoning_agent else 'No'}")
         # Update sliding windows
         self.update_windows(state)
 
@@ -559,9 +597,11 @@ class MonitorAgent:
         infos = self.check_info(state)
         warnings = self.check_warnings(state)
         criticals = self.check_criticals(state, warnings)
+        logger.info(f"Detected {len(infos)} INFO, {len(warnings)} WARNING, {len(criticals)} CRITICAL alerts")
 
         # Only output if WARNING or CRITICAL
         if not warnings and not criticals:
+            logger.info("No WARNING or CRITICAL alerts detected.")
             return None
 
         # Build output
@@ -571,7 +611,9 @@ class MonitorAgent:
         filepath = self.save_output(output)
 
         # Route to reasoning agent if provided
+        
         if reasoning_agent is not None:
+            logger.info(f"Routing alert to reasoning agent at hour {state.hour}")
             reasoning_agent.receive_alert(output)
 
         logger.warning(

@@ -1,16 +1,18 @@
 """Agent layer"""
 
 from .planner import Planner
-from .executor import Executor
+from .executor import ExecutorAgent
 from .monitor import MonitorAgent, MonitorThresholds, HealthFlag, Severity
 from .reasoning import ReasoningAgent
+from .orchestrator import AgentOrchestrator
 
 __all__ = [
     'Planner',
-    'Executor',
+    'ExecutorAgent',
     'MonitorAgent',
     'MonitorThresholds',
     'HealthFlag',
     'Severity',
-    'ReasoningAgent'
+    'ReasoningAgent',
+    'AgentOrchestrator',
 ]

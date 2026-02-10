@@ -12,7 +12,8 @@ from flask import Blueprint, jsonify, request
 from models.engine import SimulationEngine
 from models.plant_profile import PlantProfile
 from data.default_plants import DEFAULT_PROFILES, load_default_profile
-import logging 
+from agents.orchestrator import AgentOrchestrator
+import logging
 from tools.debug import display_metrics, display_final_summary
 
 
@@ -22,8 +23,9 @@ logger = logging.getLogger(__name__)
 
 bp = Blueprint('simulation', __name__)
 
-# Global simulation state
+# Global simulation state  (engine and agents are independent)
 _engine = None
+_orchestrator = None
 _simulation_thread = None
 _simulation_running = False
 _simulation_config = {}
@@ -42,6 +44,12 @@ def get_engine():
     """Get simulation engine"""
     global _engine
     return _engine
+
+
+def get_orchestrator():
+    """Get agent orchestrator"""
+    global _orchestrator
+    return _orchestrator
 
 
 def is_running():
@@ -64,12 +72,12 @@ def _print_status(state, day, hour_of_day):
 
 def _run_simulation_loop():
     """Background thread for running simulation"""
-    global _engine, _simulation_running, _simulation_config
+    global _engine, _orchestrator, _simulation_running, _simulation_config
 
     mode = _simulation_config.get('mode', 'speed')
     hours_per_tick = _simulation_config.get('hours_per_tick', 1)
     days = _simulation_config.get('days', 30)
-    tick_delay = _simulation_config.get('tick_delay', 0.1)  # seconds between ticks in speed mode
+    tick_delay = _simulation_config.get('tick_delay', 0.1)
 
     total_hours = days * 24
     plant_name = _simulation_config.get('plant_name', 'unknown')
@@ -80,18 +88,18 @@ def _run_simulation_loop():
     print(f"Mode: {'REALTIME (1 tick = 1 real hour)' if mode == 'realtime' else f'SPEED ({hours_per_tick} sim hours per tick)'}")
     print(f"Duration: {days} days ({total_hours} hours)")
     print(f"{'='*70}\n")
-    
+
     current_time = datetime.now()
     file_name = f'data/records/logs_{current_time.strftime("%d%H%M")}.txt'
 
 
     hour = 0
     while _simulation_running and hour < total_hours and _engine.state.is_alive:
-        # Run simulation step
+        # Run simulation step (hooks fire automatically)
         _engine.step(hours=1)
-        display_metrics(_engine, hours_per_tick, show_tools=False, file_name = file_name)
-        
-        
+        display_metrics(_engine, hours_per_tick, show_tools=False, file_name=file_name)
+
+
         hour += 1
 
         # Calculate day and hour of day
@@ -101,21 +109,17 @@ def _run_simulation_loop():
         # Print status every hour in realtime, every simulated day in speed mode
         if mode == 'realtime':
             _print_status(_engine.state, day, hour_of_day)
-        elif hour_of_day == 0 or hour == 1:  # Print at start of each day
+        elif hour_of_day == 0 or hour == 1:
             _print_status(_engine.state, day, hour_of_day)
 
         # Wait based on mode
         if mode == 'realtime':
-            # Real-time: wait 1 actual hour (3600 seconds)
-            # Check every minute if still running
             for _ in range(60):
                 if not _simulation_running:
                     break
-                time.sleep(60)  # 1 minute chunks
+                time.sleep(60)
         else:
-            # Speed mode: small delay between ticks
             if hours_per_tick > 1:
-                # Run additional hours per tick
                 for _ in range(hours_per_tick - 1):
                     if not _simulation_running or not _engine.state.is_alive:
                         break
@@ -140,14 +144,14 @@ def _run_simulation_loop():
     print(f"Final stage: {summary['phenological_stage']}")
     print(f"Cumulative damage: {summary['cumulative_damage']:.1f}%")
 
-    # Monitor stats
-    stats = _engine.reasoning_agent.get_statistics()
-    print(f"\nMonitor Alerts: {stats['total_alerts']} total "
-          f"({stats['warnings']} warnings, {stats['criticals']} criticals)")
+    # Agent stats (via orchestrator — independent of engine)
+    if _orchestrator:
+        stats = _orchestrator.reasoning_agent.get_statistics()
+        print(f"\nMonitor Alerts: {stats['total_alerts']} total "
+              f"({stats['warnings']} warnings, {stats['criticals']} criticals)")
 
-    # Save reasoning log
-    log_path = _engine.reasoning_agent.save_session_log()
-    print(f"Reasoning log: {log_path}")
+        log_path = _orchestrator.save_session_log()
+        print(f"Reasoning log: {log_path}")
     print(f"{'='*70}\n")
 
 
@@ -171,7 +175,7 @@ def start_simulation():
     - "speed": runs fast with configurable hours_per_tick
     - "realtime": waits 1 real hour between each simulation hour
     """
-    global _engine, _simulation_thread, _simulation_running, _simulation_config
+    global _engine, _orchestrator, _simulation_thread, _simulation_running, _simulation_config
 
     # Stop any existing simulation
     if _simulation_running:
@@ -181,7 +185,7 @@ def start_simulation():
 
     data = request.get_json() or {}
     logger.info(f"Received start simulation request: {data}")
-    
+
     plant_name = data.get('plant_name', 'tomato_standard')
     days = data.get('days', 30)
     mode = data.get('mode', 'speed')
@@ -201,7 +205,6 @@ def start_simulation():
         # Get plant profile
         try:
             profile = load_default_profile(plant_name)
-            # profile = PlantProfile(**profile_data)
         except Exception:
             list_plants()
             return jsonify({
@@ -210,16 +213,24 @@ def start_simulation():
                 'available': list(DEFAULT_PROFILES.keys())
             }), 400
 
-        # Create engine
+        # 1. Create engine (pure physics — no agent dependencies)
         _engine = SimulationEngine(profile)
 
-        # Configure
+        # 2. Configure daily regime on engine
         if daily_regime:
             _engine.set_daily_regime(enabled="True")
         else:
             _engine.set_daily_regime(enabled="False")
+            
+        # currently set daily regime to always False
+        _engine.set_daily_regime(enabled="False")
+        _engine.daily_regime_enabled = False
 
-        _engine.set_monitor_enabled(monitor_enabled)
+        # 3. Create agent orchestrator (independent — attaches via hooks)
+        _orchestrator = AgentOrchestrator.create(
+            engine=_engine,
+            monitor_enabled=monitor_enabled,
+        )
 
         # Store config
         _simulation_config = {
@@ -258,7 +269,7 @@ def start_simulation():
 @bp.route('/stop', methods=['POST'])
 def stop_simulation():
     """Stop current simulation"""
-    global _engine, _simulation_running, _simulation_thread
+    global _engine, _orchestrator, _simulation_running, _simulation_thread
 
     if not _simulation_running and _engine is None:
         return jsonify({
@@ -275,7 +286,8 @@ def stop_simulation():
     log_path = None
     if _engine:
         summary = _engine.get_summary()
-        log_path = _engine.reasoning_agent.save_session_log()
+    if _orchestrator:
+        log_path = _orchestrator.save_session_log()
 
     return jsonify({
         'success': True,
@@ -348,17 +360,17 @@ def get_history():
 
 @bp.route('/monitor/alerts', methods=['GET'])
 def get_monitor_alerts():
-    """Get recent monitor alerts"""
-    engine = get_engine()
-    if engine is None:
+    """Get recent monitor alerts (via orchestrator)"""
+    orchestrator = get_orchestrator()
+    if orchestrator is None:
         return jsonify({
             'success': False,
-            'error': 'No simulation running.'
+            'error': 'No simulation running or agents not attached.'
         }), 400
 
     limit = request.args.get('limit', default=10, type=int)
-    alerts = engine.reasoning_agent.get_recent_alerts(limit)
-    stats = engine.reasoning_agent.get_statistics()
+    alerts = orchestrator.reasoning_agent.get_recent_alerts(limit)
+    stats = orchestrator.reasoning_agent.get_statistics()
 
     return jsonify({
         'success': True,

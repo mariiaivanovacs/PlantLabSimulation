@@ -1,6 +1,7 @@
 
 
 
+import os
 from models.engine import SimulationEngine
 
 def format_time(hours: int) -> str:
@@ -26,10 +27,13 @@ def display_metrics(engine: SimulationEngine, simulation_hours_per_tick: int = 1
     # Log to file only during daytime and at specific intervals (e.g., every 4 hours during day)
     # This gives us measurements at: 8 AM, 12 PM, 4 PM (midday measurements)
     # if is_daytime and hour_of_day % 4 == 0:
-    with open(file_name, 'a') as f:
-        # Record: day, biomass, pheno stage, relative humidity, air temperature, CO2, RGR
-        f.write(f"{state.hour / 24:.2f},{state.biomass:.4f},{state.phenological_stage.value},{state.relative_humidity:.2f},{state.air_temp:.2f},{state.CO2:.2f},{state.RGR:.6f}, {state.ET:.4f}, {state.water_stress:.6f}\n")
-
+    try: 
+        with open(file_name, 'a') as f:
+            # Record: day, biomass, pheno stage, relative humidity, air temperature, CO2, RGR
+            f.write(f"{state.hour / 24:.2f},{state.biomass:.4f},{state.phenological_stage.value},{state.relative_humidity:.2f},{state.air_temp:.2f},{state.CO2:.2f},{state.RGR:.6f}, {state.ET:.4f}, {state.water_stress:.6f}\n")
+    except FileNotFoundError as e:
+        # create the directory if it doesn't exist
+        os.makedirs(os.path.dirname(file_name), exist_ok=True)
 
 
     # ANSI colors

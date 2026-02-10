@@ -79,10 +79,6 @@ from tools.humidity import HumidityTool
 from tools.ventilation import VentilationTool
 from tools.co2_control import CO2ControlTool
 
-# Import monitor and reasoning agents
-from agents.monitor import MonitorAgent, MonitorThresholds
-from agents.reasoning import ReasoningAgent
-
 # Setup logging
 logger = logging.getLogger(__name__)
 
@@ -159,8 +155,9 @@ class SimulationEngine:
         self.water_applications: int = 0          # Number of times water was applied
         self.co2_injections: int = 0              # Number of times CO2 was injected
 
-        # Initialize Monitor Agent with thresholds from plant profile
-        self._init_monitor_agent()
+        # Post-step hooks: callables invoked after each hourly step
+        # External code (e.g. AgentOrchestrator) registers hooks here
+        self._post_step_hooks: list = []
 
         logger.info(f"Initialized simulation {self.simulation_id} with plant {self.plant_id}")
 
@@ -176,31 +173,12 @@ class SimulationEngine:
             ToolType.CO2_CONTROL: CO2ControlTool(),
         }
 
-    def _init_monitor_agent(self) -> None:
-        """Initialize Monitor Agent with thresholds from plant profile"""
-        # Create thresholds from plant profile
-        thresholds = MonitorThresholds.from_plant_profile(self.plant_profile)
+    def register_post_step_hook(self, hook) -> None:
+        """Register a callable to run after each hourly step.
 
-        # Initialize Monitor Agent
-        self.monitor_agent = MonitorAgent(
-            thresholds=thresholds,
-            output_dir="out",
-            plant_id=self.plant_id,
-            simulation_id=self.simulation_id,
-            profile_id=self.plant_profile.profile_id
-        )
-
-        # Initialize Reasoning Agent (skeleton)
-        self.reasoning_agent = ReasoningAgent(
-            plant_id=self.plant_id,
-            simulation_id=self.simulation_id,
-            log_dir="out/reasoning"
-        )
-
-        # Monitor enabled by default
-        self.monitor_enabled: bool = True
-
-        logger.info(f"Monitor Agent initialized with profile thresholds")
+        Hook signature: hook(engine: SimulationEngine) -> None
+        """
+        self._post_step_hooks.append(hook)
 
     def _create_initial_state(self) -> PlantState:
         """Create initial plant state from profile"""
@@ -650,12 +628,12 @@ class SimulationEngine:
         self.daily_ventilation_speed = fan_speed
         self.co2_enrichment_enabled = co2_enrichment
         self.co2_target_ppm = co2_target
+
         logger.info(f"Daily regime {'enabled' if enabled else 'disabled'}: "
                    f"water at {watering_hour}:00 ({water_amount}L), "
                    f"ventilate at {ventilation_hour}:00 ({fan_speed}%), "
                    f"CO2 enrichment {'enabled' if co2_enrichment else 'disabled'} (target: {co2_target}ppm)")
-            
-            
+
 
     def _step_one_hour(self, irrigation: float = 0.0) -> None:
         """Run one hourly timestep"""
@@ -666,9 +644,10 @@ class SimulationEngine:
         # This is critical for seedling survival at moderate temperatures
         self._update_seedling_lue_boost()
 
-        # Execute daily automated regime (watering, ventilation)
-        if self.daily_regime_enabled:
-            self._execute_daily_regime()
+        # Pre-physics hooks (executor caring regime runs here via orchestrator)
+        for hook in self._post_step_hooks:
+            if getattr(hook, '_pre_physics', False):
+                hook(self)
             
         # if self.state.hour % 4 == 0:
             
@@ -729,8 +708,10 @@ class SimulationEngine:
         # 14. Save checkpoint
         self._save_checkpoint()
 
-        # 15. Run Monitor Agent check (outputs only on WARNING/CRITICAL)
-        self._run_monitor_check()
+        # 15. Run post-step hooks (monitor, reasoning, etc.)
+        for hook in self._post_step_hooks:
+            if not getattr(hook, '_pre_physics', False):
+                hook(self)
 
     def _update_vpd(self) -> None:
         """Calculate and update VPD"""
@@ -1291,30 +1272,6 @@ class SimulationEngine:
         checkpoint['co2_fluxes'] = self.co2_fluxes.copy()
         self.history.append(checkpoint)
 
-    def _run_monitor_check(self) -> None:
-        """
-        Run Monitor Agent check every hour.
-        Outputs to /out only if WARNING or CRITICAL detected.
-        Routes alerts to ReasoningAgent.
-        """
-        if not self.monitor_enabled:
-            return
-
-        # Run monitor check - returns output only if WARNING/CRITICAL
-        alert = self.monitor_agent.check(
-            state=self.state,
-            reasoning_agent=self.reasoning_agent
-        )
-
-        if alert:
-            severity = alert.get("routing", {}).get("highest_severity", "UNKNOWN")
-            logger.info(f"Monitor detected {severity} at hour {self.state.hour}")
-
-    def set_monitor_enabled(self, enabled: bool) -> None:
-        """Enable or disable the monitor agent"""
-        self.monitor_enabled = enabled
-        logger.info(f"Monitor Agent {'enabled' if enabled else 'disabled'}")
-
     def get_state(self) -> PlantState:
         """Get current plant state"""
         return self.state
@@ -1342,11 +1299,7 @@ class SimulationEngine:
         self.co2_fluxes = {}
         self.ventilation_rate = 0.0
 
-        # Reset monitor and reasoning agents
-        if hasattr(self, 'monitor_agent'):
-            self.monitor_agent.reset()
-        if hasattr(self, 'reasoning_agent'):
-            self.reasoning_agent.reset()
+        # Hooks are preserved — orchestrator handles its own reset
 
     def get_summary(self) -> Dict[str, Any]:
         """Get simulation summary"""

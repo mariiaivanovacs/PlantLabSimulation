@@ -71,6 +71,7 @@ def run_simulation_direct(
     """Run simulation directly without Flask server"""
     from models.engine import SimulationEngine
     from models.plant_profile import PlantProfile
+    from agents.orchestrator import AgentOrchestrator
 
     print(f"\n{'='*60}")
     print(f"PlantLabSimulation - Direct Run")
@@ -86,22 +87,26 @@ def run_simulation_direct(
         profile_data = load_default_profile(plant_name)
         profile = PlantProfile(**profile_data)
     except Exception as e:
-        # print(f"Error loading plant profile: {e}")
-        # sys.exit(1)
         print(f"Error: Could not load plant profile '{plant_name}'.")
         list_plants()
         sys.exit(1)
 
-    # Create engine
+    # 1. Create engine (pure physics)
     engine = SimulationEngine(profile)
 
-    # Configure
+    # 2. Configure daily regime
     if daily_regime:
         engine.set_daily_regime(enabled="True")
     else:
         engine.set_daily_regime(enabled="False")
 
-    engine.set_monitor_enabled(monitor_enabled)
+    # 3. Attach agent orchestrator (independent of engine)
+    orchestrator = None
+    if monitor_enabled:
+        orchestrator = AgentOrchestrator.create(
+            engine=engine,
+            monitor_enabled=True,
+        )
 
     # Run simulation
     total_hours = days * 24
@@ -137,16 +142,15 @@ def run_simulation_direct(
     print(f"Plant alive: {summary['is_alive']}")
     print(f"Final damage: {summary['cumulative_damage']:.1f}%")
 
-    # Monitor statistics
-    if monitor_enabled:
-        stats = engine.reasoning_agent.get_statistics()
+    # Agent statistics (via orchestrator — independent of engine)
+    if orchestrator:
+        stats = orchestrator.reasoning_agent.get_statistics()
         print(f"\nMonitor Statistics:")
         print(f"  Total alerts: {stats['total_alerts']}")
         print(f"  Warnings: {stats['warnings']}")
         print(f"  Criticals: {stats['criticals']}")
 
-        # Save reasoning log
-        log_path = engine.reasoning_agent.save_session_log()
+        log_path = orchestrator.save_session_log()
         print(f"\nReasoning log saved: {log_path}")
 
     # List output files
