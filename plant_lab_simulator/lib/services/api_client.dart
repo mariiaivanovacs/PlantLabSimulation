@@ -16,6 +16,7 @@ class ApiClient {
   ApiClient._internal();
 
   // Helper: make GET request
+  // Accept 400 too — backend returns 400 (not 404) when no simulation is running
   Future<dynamic> getRequest(String endpoint) async {
     try {
       final url = Uri.parse('$baseUrl$endpoint');
@@ -164,7 +165,7 @@ class AgentStatusResponse {
   factory AgentStatusResponse.fromJson(Map<String, dynamic> json) {
     return AgentStatusResponse(
       success: json['success'] ?? false,
-      statistics: json['statistics'] ?? {},
+      statistics: Map<String, dynamic>.from(json['statistics'] ?? {}),
       error: json['error'],
     );
   }
@@ -182,24 +183,24 @@ class DiagnosticsResponse {
   });
 
   factory DiagnosticsResponse.fromJson(Map<String, dynamic> json) {
-    final success = json['success'] ?? false;
     final diagList = (json['diagnostics'] as List<dynamic>?)?.map((d) {
           return DiagnosticItem.fromJson(d as Map<String, dynamic>);
         }).toList() ??
         [];
 
     return DiagnosticsResponse(
-      success: success,
+      success: json['success'] ?? false,
       diagnostics: diagList,
       error: json['error'],
     );
   }
 }
 
+// Backend returns: { status, diagnostic, alert_severity, hour }
 class DiagnosticItem {
   final String status; // 'analyzed' or 'fallback'
   final String diagnostic;
-  final String alertSeverity;
+  final String alertSeverity; // 'WARNING', 'CRITICAL', etc.
   final int hour;
 
   DiagnosticItem({
@@ -247,6 +248,7 @@ class ExecutorLogResponse {
   }
 }
 
+// Backend returns: { hour, tool_type, parameters, success, message }
 class ExecutorLogItem {
   final int hour;
   final String toolType;
@@ -310,7 +312,7 @@ class ExecuteResponse {
     return ExecuteResponse(
       success: json['success'] ?? false,
       message: json['message'] ?? '',
-      changes: json['changes'] ?? {},
+      changes: Map<String, dynamic>.from(json['changes'] ?? {}),
       error: json['error'],
     );
   }
@@ -344,7 +346,7 @@ class SimulationStartResponse {
       simulationId: json['simulation_id'] ?? '',
       plantId: json['plant_id'] ?? '',
       profileId: json['profile_id'] ?? '',
-      config: json['config'] ?? {},
+      config: Map<String, dynamic>.from(json['config'] ?? {}),
       error: json['error'],
     );
   }
@@ -396,7 +398,7 @@ class SimulationHistoryResponse {
 
   factory SimulationHistoryResponse.fromJson(Map<String, dynamic> json) {
     final histList = (json['history'] as List<dynamic>?)
-            ?.map((h) => h as Map<String, dynamic>)
+            ?.map((h) => Map<String, dynamic>.from(h as Map))
             .toList() ??
         [];
     return SimulationHistoryResponse(
@@ -474,7 +476,7 @@ class SimulationStopResponse {
     return SimulationStopResponse(
       success: json['success'] ?? false,
       message: json['message'] ?? '',
-      summary: json['summary'] ?? {},
+      summary: Map<String, dynamic>.from(json['summary'] ?? {}),
       reasoningLog: json['reasoning_log'],
       error: json['error'],
     );

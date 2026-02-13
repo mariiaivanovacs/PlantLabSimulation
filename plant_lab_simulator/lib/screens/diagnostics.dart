@@ -87,7 +87,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const PanelTitle('RAG Diagnostics'),
+                            const PanelTitle('Agent Diagnostics'),
                             const SizedBox(height: 12),
                             if (diagnostics.isEmpty)
                               const Text(
@@ -113,6 +113,7 @@ class _DiagnosticCard extends StatelessWidget {
 
   const _DiagnosticCard({required this.diagnostic});
 
+  // Backend sends alertSeverity: 'WARNING', 'CRITICAL', 'INFO', etc.
   Color _severityColor() {
     switch (diagnostic.alertSeverity.toUpperCase()) {
       case 'CRITICAL':
@@ -135,6 +136,7 @@ class _DiagnosticCard extends StatelessWidget {
     }
   }
 
+  // status is 'analyzed' (RAG) or 'fallback' (rule-based)
   Color _statusColor() {
     return diagnostic.status == 'analyzed' ? C.green : C.textMuted;
   }
@@ -168,7 +170,8 @@ class _DiagnosticCard extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: _statusColor().withOpacity(0.15),
                   borderRadius: BorderRadius.circular(4),
@@ -187,7 +190,8 @@ class _DiagnosticCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             diagnostic.diagnostic,
-            style: const TextStyle(color: C.textMuted, fontSize: 12, height: 1.4),
+            style: const TextStyle(
+                color: C.textMuted, fontSize: 12, height: 1.4),
           ),
         ],
       ),

@@ -297,19 +297,3 @@ class _ActionLogTileState extends State<_ActionLogTile> {
   }
 }
 
-class ExecutorAction {
-  final String timestamp;
-  final String toolType;
-  final String status; // 'success', 'warning', 'error'
-  final Map<String, dynamic> parameters;
-  final String result;
-
-  ExecutorAction({
-    required this.timestamp,
-    required this.toolType,
-    required this.status,
-    required this.parameters,
-    required this.result,
-  });
-}
-// Note: ExecutorLogItem is defined in services/api_client.dart

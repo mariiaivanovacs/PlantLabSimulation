@@ -273,13 +273,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  String _growthStageStringFromState(PlantState state) {
-    if (!state.isAlive) return 'dead';
-    // Map integer stage index to PhenologyBar stage strings
-    const stages = ['seed', 'seedling', 'vegetative', 'flowering', 'fruiting', 'mature', 'dead'];
-    return stages[state.stage.clamp(0, stages.length - 1)];
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -641,7 +634,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         children: [
           const PanelTitle('Plant Visual'),
-          Center(child: PlantVisual(state: state)),
+          Center(child: PlantVisual(state: simulationState ?? {})),
           const SizedBox(height: 6),
           Text(
             '${selectedPlant ?? "Plant"} · ${state.stageLabel} · Day ${state.day}',
