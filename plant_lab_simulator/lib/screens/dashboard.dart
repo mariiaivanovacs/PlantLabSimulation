@@ -714,7 +714,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const PanelTitle('Growth Stage'),
-          PhenologyBar(stage: stage),
+          PhenologyBar(stage: stage.label),
           const SizedBox(height: 4),
           Text(
             stage.label,
