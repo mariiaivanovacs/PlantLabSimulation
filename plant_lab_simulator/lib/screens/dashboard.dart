@@ -204,6 +204,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<void> _stepSimulation(int hours) async {
+    setState(() => isLoading = true);
+    try {
+      final response = await _api.stepSimulation(hours);
+      if (!mounted) return;
+      if (response.success) {
+        setState(() {
+          simulationState = response.state;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⏩ Stepped +${hours}h (Hour ${_i('hour')})'),
+            backgroundColor: C.green,
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ ${response.error ?? "Step failed"}'),
+            backgroundColor: C.danger,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: C.danger),
+      );
+    } finally {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
   // ── display name helper ──────────────────────────────────────────────────────
 
   String get _selectedPlantDisplayName {
@@ -471,6 +505,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         SizedBox(
           width: 340,
           child: _scrollCol([
+            _buildStepPanel(),
             _buildActionsPanel(),
             _buildControlPanel(),
           ]),
@@ -497,6 +532,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _buildCoreStatePanel(),
             _buildPhenologyPanel(),
             _buildAgentStatsPanel(),
+            _buildStepPanel(),
             _buildActionsPanel(),
             _buildControlPanel(),
           ]),
@@ -513,6 +549,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _buildEnvironmentPanel(),
       _buildHistoryPanel(),
       _buildAgentStatsPanel(),
+      _buildStepPanel(),
       _buildActionsPanel(),
       _buildControlPanel(),
       const SizedBox(height: 60),
@@ -889,6 +926,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     _executeAction(ActionType.ventilation, {'rate': 0.5}),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepPanel() {
+    final steps = [
+      (1, '1h'),
+      (6, '6h'),
+      (12, '12h'),
+      (24, '1d'),
+      (72, '3d'),
+      (168, '1w'),
+    ];
+    return Panel(
+      accentLeft: C.info,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const PanelTitle('Manual Step'),
+          const Text(
+            'Advance simulation by:',
+            style: TextStyle(color: C.textMuted, fontSize: 11),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: steps.map((s) {
+              final hours = s.$1;
+              final label = s.$2;
+              return AnimButton(
+                label: label,
+                color: C.info.withValues(alpha: 0.25),
+                compact: true,
+                onTap: isLoading ? () {} : () => _stepSimulation(hours),
+              );
+            }).toList(),
           ),
         ],
       ),

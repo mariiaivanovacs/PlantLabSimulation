@@ -2,6 +2,7 @@
 
 import sys
 import os
+import math
 import threading
 import time
 from datetime import datetime
@@ -22,6 +23,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('simulation', __name__)
+
+
+def _sanitize(obj):
+    """Recursively replace inf/nan floats with None so jsonify never breaks."""
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize(v) for v in obj]
+    if isinstance(obj, float) and (math.isinf(obj) or math.isnan(obj)):
+        return None
+    return obj
+
 
 # Global simulation state  (engine and agents are independent)
 _engine = None
@@ -304,14 +317,14 @@ def get_state():
             'running': False
         }), 400
 
-    state_dict = engine.state.to_dict()
+    state_dict = _sanitize(engine.state.to_dict())
 
     return jsonify({
         'success': True,
         'running': _simulation_running,
         'config': _simulation_config,
         'state': state_dict,
-        'summary': engine.get_summary()
+        'summary': _sanitize(engine.get_summary())
     })
 
 
@@ -350,7 +363,48 @@ def get_history():
         'success': True,
         'total_hours': len(history),
         'returned': len(recent),
-        'history': recent
+        'history': _sanitize(recent)
+    })
+
+
+@bp.route('/step', methods=['POST'])
+def step_simulation():
+    """Manually advance the simulation by N hours.
+
+    Request body: {"hours": 1}   # 1 | 6 | 12 | 24 | 168
+    """
+    engine = get_engine()
+    if engine is None:
+        return jsonify({
+            'success': False,
+            'error': 'No simulation running.'
+        }), 400
+
+    if not engine.state.is_alive:
+        return jsonify({
+            'success': False,
+            'error': 'Plant is dead — simulation cannot be stepped.'
+        }), 400
+
+    data = request.get_json() or {}
+    hours = int(data.get('hours', 1))
+    if hours < 1 or hours > 720:
+        return jsonify({
+            'success': False,
+            'error': 'hours must be between 1 and 720.'
+        }), 400
+
+    for _ in range(hours):
+        if not engine.state.is_alive:
+            break
+        engine.step(hours=1)
+
+    state_dict = _sanitize(engine.state.to_dict())
+    return jsonify({
+        'success': True,
+        'hours_stepped': hours,
+        'state': state_dict,
+        'summary': _sanitize(engine.get_summary())
     })
 
 

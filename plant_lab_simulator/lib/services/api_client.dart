@@ -156,6 +156,12 @@ class ApiClient {
     return SimulationStopResponse.fromJson(response);
   }
 
+  /// POST /simulation/step
+  Future<SimulationStepResponse> stepSimulation(int hours) async {
+    final response = await postRequest('/simulation/step', {'hours': hours});
+    return SimulationStepResponse.fromJson(response);
+  }
+
 }
 
 // --- Response Models ---
@@ -487,6 +493,32 @@ class SimulationStopResponse {
       message: json['message'] ?? '',
       summary: Map<String, dynamic>.from(json['summary'] ?? {}),
       reasoningLog: json['reasoning_log'],
+      error: json['error'],
+    );
+  }
+}
+
+class SimulationStepResponse {
+  final bool success;
+  final int hoursStipped;
+  final Map<String, dynamic> state;
+  final Map<String, dynamic> summary;
+  final String? error;
+
+  SimulationStepResponse({
+    required this.success,
+    required this.hoursStipped,
+    required this.state,
+    required this.summary,
+    this.error,
+  });
+
+  factory SimulationStepResponse.fromJson(Map<String, dynamic> json) {
+    return SimulationStepResponse(
+      success: json['success'] ?? false,
+      hoursStipped: json['hours_stepped'] ?? 0,
+      state: Map<String, dynamic>.from(json['state'] ?? {}),
+      summary: Map<String, dynamic>.from(json['summary'] ?? {}),
       error: json['error'],
     );
   }
