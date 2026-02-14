@@ -2,6 +2,7 @@
 
 import os
 from flask import Flask, send_from_directory
+from flask_cors import CORS
 
 
 def create_app():
@@ -11,6 +12,9 @@ def create_app():
     static_dir = os.path.join(app_dir, 'templates')
 
     app = Flask(__name__, static_folder=static_dir, static_url_path='')
+
+    # Allow cross-origin requests from any port (needed for flutter run dev server)
+    CORS(app, resources={r"/api/*": {"origins": "*"}})
 
     # Load config
     app.config['DEBUG'] = True
