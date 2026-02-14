@@ -1,17 +1,16 @@
 """Flask application factory"""
 
 import os
-from flask import Flask
+from flask import Flask, send_from_directory
 
 
 def create_app():
     """Create and configure Flask app"""
     # Get the app directory path
     app_dir = os.path.dirname(os.path.abspath(__file__))
-    template_dir = os.path.join(app_dir, 'templates')
     static_dir = os.path.join(app_dir, 'templates')
 
-    app = Flask(__name__, template_folder=template_dir, static_folder=static_dir, static_url_path='')
+    app = Flask(__name__, static_folder=static_dir, static_url_path='')
 
     # Load config
     app.config['DEBUG'] = True
@@ -20,19 +19,14 @@ def create_app():
     @app.route('/')
     def serve_index():
         """Serve index.html for Flutter web app"""
-        with open(os.path.join(static_dir, 'index.html'), 'r') as f:
-            return f.read()
-    
+        return send_from_directory(static_dir, 'index.html')
+
     @app.route('/<path:path>')
     def serve_static(path):
-        """Serve static files and fall back to index.html for client-side routing"""
-        file_path = os.path.join(static_dir, path)
-        if os.path.isfile(file_path):
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                return f.read()
-        # Fall back to index.html for client-side routing
-        with open(os.path.join(static_dir, 'index.html'), 'r') as f:
-            return f.read()
+        """Serve static files with correct MIME types, fall back to index.html"""
+        if os.path.isfile(os.path.join(static_dir, path)):
+            return send_from_directory(static_dir, path)
+        return send_from_directory(static_dir, 'index.html')
 
     # Register blueprints
     from app.routes import simulation_routes, agent_routes

@@ -3,8 +3,8 @@ import '../theme.dart';
 import '../models/plant_state.dart';
 
 class PhenologyBar extends StatelessWidget {
-  final GrowthStage current;
-  const PhenologyBar({super.key, required this.current});
+  final GrowthStage stage;
+  const PhenologyBar({super.key, required this.stage});
 
   @override
   Widget build(BuildContext context) {
@@ -20,8 +20,8 @@ class PhenologyBar extends StatelessWidget {
     return Row(
       children: [
         for (int i = 0; i < stages.length; i++) ...[
-          if (i > 0) _connector(stages[i].index <= current.index),
-          _stageChip(stages[i], current),
+          if (i > 0) _connector(stages[i].index <= stage.index),
+          _stageChip(stages[i], stage),
         ],
       ],
     );
@@ -36,15 +36,15 @@ class PhenologyBar extends StatelessWidget {
     );
   }
 
-  Widget _stageChip(GrowthStage stage, GrowthStage current) {
-    final isDead = current == GrowthStage.dead;
-    final isDone = stage.index < current.index;
-    final isActive = stage == current ||
-        (isDead && stage == GrowthStage.mature);
+  Widget _stageChip(GrowthStage chip, GrowthStage active) {
+    final isDead = active == GrowthStage.dead;
+    final isDone = chip.index < active.index;
+    final isActive = chip == active ||
+        (isDead && chip == GrowthStage.mature);
 
     Color bg = C.bg;
     Color fg = C.textMuted;
-    if (isDead && stage == GrowthStage.mature) {
+    if (isDead && chip == GrowthStage.mature) {
       bg = C.dangerDim;
       fg = C.dangerSoft;
     } else if (isActive) {
@@ -56,7 +56,7 @@ class PhenologyBar extends StatelessWidget {
     }
 
     String label;
-    switch (stage) {
+    switch (chip) {
       case GrowthStage.seed:
         label = 'Seed';
         break;
