@@ -21,20 +21,34 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final ApiClient _api = ApiClient();
 
-  // UI state
+  // UI state — all data comes raw from Flask
   bool isLoading = false;
   bool simulationRunning = false;
-  Map<String, dynamic>? simulationState;
-  Map<String, dynamic>? simulationSummary;
-  Map<String, dynamic>? simulationConfig;
+  Map<String, dynamic>? simulationState;   // raw state dict from /simulation/state
+  Map<String, dynamic>? simulationSummary; // raw summary dict
+  Map<String, dynamic>? simulationConfig;  // raw config dict
   List<Map<String, dynamic>> history = [];
   Map<String, dynamic>? agentStats;
   List<PlantProfile> availablePlants = [];
   String? selectedPlant;
   String? error;
 
-  // Polling timer
-  bool _mounted = true;
+  // ── helpers to read backend state fields safely ─────────────────────────────
+
+  double _d(String key, [double fallback = 0.0]) =>
+      (simulationState?[key] ?? fallback).toDouble();
+
+  int _i(String key, [int fallback = 0]) =>
+      (simulationState?[key] ?? fallback).toInt();
+
+  bool _b(String key, [bool fallback = true]) =>
+      simulationState?[key] as bool? ?? fallback;
+
+  /// phenological_stage comes as a string from the backend state dict
+  GrowthStage get _stage =>
+      GrowthStage.fromString(simulationState?['phenological_stage'] as String?);
+
+  // ── lifecycle ────────────────────────────────────────────────────────────────
 
   @override
   void initState() {
@@ -45,7 +59,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
-    _mounted = false;
     super.dispose();
   }
 
@@ -54,11 +67,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _periodicUpdate() async {
-    while (_mounted) {
+    while (mounted) {
       try {
-        // Poll simulation state
         final stateResp = await _api.getSimulationState();
-        if (!_mounted) return;
+        if (!mounted) return;
 
         setState(() {
           simulationRunning = stateResp.running;
@@ -68,19 +80,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
           error = null;
         });
 
-        // If running, also fetch history and agent stats
         if (simulationRunning) {
           final histResp = await _api.getSimulationHistory(limit: 100);
           final agentResp = await _api.getAgentStatus();
 
-          if (!_mounted) return;
+          if (!mounted) return;
           setState(() {
             history = histResp.history;
             agentStats = agentResp.statistics;
           });
         }
       } catch (e) {
-        if (!_mounted) return;
+        if (!mounted) return;
         setState(() {
           error = e.toString();
           simulationRunning = false;
@@ -94,7 +105,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _loadAvailablePlants() async {
     try {
       final response = await _api.getAvailablePlants();
-      if (!_mounted) return;
+      if (!mounted) return;
       setState(() {
         availablePlants = response.plants;
         if (availablePlants.isNotEmpty && selectedPlant == null) {
@@ -102,19 +113,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       });
     } catch (e) {
-      if (!_mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to load plants: $e'),
-          backgroundColor: C.danger,
-        ),
+        SnackBar(content: Text('Failed to load plants: $e'), backgroundColor: C.danger),
       );
     }
   }
 
   Future<void> _startSimulation() async {
     if (selectedPlant == null) return;
-
     setState(() => isLoading = true);
     try {
       final response = await _api.startSimulation(
@@ -126,34 +133,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
         dailyRegime: true,
         monitorEnabled: true,
       );
-
-      if (!_mounted) return;
+      if (!mounted) return;
       if (response.success) {
         setState(() => simulationRunning = true);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ ${response.message}'),
-            backgroundColor: C.green,
-          ),
+          SnackBar(content: Text('✅ ${response.message}'), backgroundColor: C.green),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${response.error}'),
-            backgroundColor: C.danger,
-          ),
+          SnackBar(content: Text('Error: ${response.error}'), backgroundColor: C.danger),
         );
       }
     } catch (e) {
-      if (!_mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed: $e'),
-          backgroundColor: C.danger,
-        ),
+        SnackBar(content: Text('Failed: $e'), backgroundColor: C.danger),
       );
     } finally {
-      if (_mounted) setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
@@ -161,44 +158,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() => isLoading = true);
     try {
       final response = await _api.stopSimulation();
-      if (!_mounted) return;
+      if (!mounted) return;
       if (response.success) {
         setState(() {
           simulationRunning = false;
+          simulationState = null;
           history = [];
           agentStats = null;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('⏹️ ${response.message}'),
-            backgroundColor: C.green,
-          ),
+          SnackBar(content: Text('⏹️ ${response.message}'), backgroundColor: C.green),
         );
       }
     } catch (e) {
-      if (!_mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error stopping: $e'),
-          backgroundColor: C.danger,
-        ),
+        SnackBar(content: Text('Error stopping: $e'), backgroundColor: C.danger),
       );
     } finally {
-      if (_mounted) setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
   Future<void> _executeAction(ActionType type, Map<String, dynamic> params) async {
     try {
       final response = await _api.executeAction(type.backendName, params);
-      if (!_mounted) return;
-
+      if (!mounted) return;
       if (response.success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ ${response.message}'),
-            backgroundColor: C.green,
-          ),
+          SnackBar(content: Text('✅ ${response.message}'), backgroundColor: C.green),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -209,69 +197,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       }
     } catch (e) {
-      if (!_mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: C.danger,
-        ),
+        SnackBar(content: Text('Error: $e'), backgroundColor: C.danger),
       );
     }
   }
 
-  PlantState _buildPlantState() {
-    if (simulationState == null) {
-      return const PlantState();
-    }
+  // ── display name helper ──────────────────────────────────────────────────────
 
-    final state = simulationState!;
-    final summary = simulationSummary ?? {};
-
-    return PlantState(
-      day: state['day'] ?? 0,
-      hour: state['hour'] ?? 0,
-      biomass: (state['biomass'] ?? 0.0).toDouble(),
-      leafArea: (state['leaf_area'] ?? 0.0).toDouble(),
-      thermalTime: (state['thermal_time'] ?? 0.0).toDouble(),
-      cumulativeDamage: (state['cumulative_damage'] ?? 0.0).toDouble(),
-      isAlive: state['is_alive'] ?? false,
-      soilWater: (state['soil_water'] ?? 35.0).toDouble(),
-      airTemp: (state['air_temp'] ?? 25.0).toDouble(),
-      soilTemp: (state['soil_temp'] ?? 22.0).toDouble(),
-      relativeHumidity: (state['relative_humidity'] ?? 60.0).toDouble(),
-      lightPAR: (state['light_PAR'] ?? 0.0).toDouble(),
-      vpd: (state['vpd'] ?? 1.0).toDouble(),
-      soilN: (state['soil_N'] ?? 150.0).toDouble(),
-      soilEC: (state['soil_EC'] ?? 1.5).toDouble(),
-      waterStress: (state['water_stress'] ?? 0.0).toDouble(),
-      tempStress: (state['temp_stress'] ?? 0.0).toDouble(),
-      nutrientStress: (state['nutrient_stress'] ?? 0.0).toDouble(),
-      stage: _stageFromString(summary['phenological_stage']),
-    );
+  String get _selectedPlantDisplayName {
+    if (selectedPlant == null) return 'Plant';
+    final profile = availablePlants.where((p) => p.id == selectedPlant).firstOrNull;
+    if (profile == null) return selectedPlant!;
+    return profile.commonNames.isNotEmpty ? profile.commonNames.first : profile.name;
   }
 
-  int _stageFromString(String? stageStr) {
-    if (stageStr == null) return 0;
-    // Backend PhenologicalStage enum values: SEED, SEEDLING, VEGETATIVE, FLOWERING, FRUITING, MATURE, DEAD
-    switch (stageStr.toUpperCase()) {
-      case 'SEED':
-        return 0;
-      case 'SEEDLING':
-        return 1;
-      case 'VEGETATIVE':
-        return 2;
-      case 'FLOWERING':
-        return 3;
-      case 'FRUITING':
-        return 4;
-      case 'MATURE':
-        return 5;
-      case 'DEAD':
-        return 6;
-      default:
-        return 0;
-    }
-  }
+  // ── build ────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -290,6 +232,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildHeader() {
+    final alive = _b('is_alive');
+    final damage = _d('cumulative_damage');
+    final hour = _i('hour');
+    final day = hour ~/ 24;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: const BoxDecoration(
@@ -304,11 +251,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 Text(
                   'Plant Lab Simulator',
-                  style: TextStyle(
-                    color: C.green,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: TextStyle(color: C.green, fontSize: 18, fontWeight: FontWeight.w800),
                 ),
                 Text(
                   'Flask-Powered Growth Simulation',
@@ -325,12 +268,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
-                'Day ${simulationState!['day']} · H${simulationState!['hour']}',
+                'Day $day · H$hour',
                 style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
               ),
             ),
             const SizedBox(width: 10),
-            _buildHealthChip(),
+            // Health chip — reads directly from simulationState
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: alive
+                    ? C.greenSoft.withValues(alpha: 0.85)
+                    : C.danger.withValues(alpha: 0.8),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                '${alive ? "🌿" : "💀"} ${alive ? "ALIVE" : "DEAD"} · ${damage.toStringAsFixed(0)}%',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                  color: alive ? C.greenDark : Colors.white,
+                ),
+              ),
+            ),
             const SizedBox(width: 8),
           ],
           PopupMenuButton<String>(
@@ -339,81 +299,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onSelected: (value) {
               switch (value) {
                 case 'diagnostics':
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const DiagnosticsScreen()),
-                  );
+                  Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const DiagnosticsScreen()));
                   break;
                 case 'executor':
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ExecutorLogScreen()),
-                  );
+                  Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const ExecutorLogScreen()));
                   break;
                 case 'monitor':
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const MonitorSettingsScreen()),
-                  );
+                  Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const MonitorSettingsScreen()));
                   break;
               }
             },
             itemBuilder: (context) => const [
               PopupMenuItem(
                 value: 'diagnostics',
-                child: Row(
-                  children: [
-                    Icon(Icons.analytics, color: C.info, size: 18),
-                    SizedBox(width: 8),
-                    Text('Diagnostics'),
-                  ],
-                ),
+                child: Row(children: [
+                  Icon(Icons.analytics, color: C.info, size: 18),
+                  SizedBox(width: 8),
+                  Text('Diagnostics'),
+                ]),
               ),
               PopupMenuItem(
                 value: 'executor',
-                child: Row(
-                  children: [
-                    Icon(Icons.history, color: C.textMuted, size: 18),
-                    SizedBox(width: 8),
-                    Text('Action Log'),
-                  ],
-                ),
+                child: Row(children: [
+                  Icon(Icons.history, color: C.textMuted, size: 18),
+                  SizedBox(width: 8),
+                  Text('Action Log'),
+                ]),
               ),
               PopupMenuItem(
                 value: 'monitor',
-                child: Row(
-                  children: [
-                    Icon(Icons.settings, color: C.textMuted, size: 18),
-                    SizedBox(width: 8),
-                    Text('Monitor Settings'),
-                  ],
-                ),
+                child: Row(children: [
+                  Icon(Icons.settings, color: C.textMuted, size: 18),
+                  SizedBox(width: 8),
+                  Text('Monitor Settings'),
+                ]),
               ),
             ],
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildHealthChip() {
-    final state = _buildPlantState();
-    final alive = state.isAlive;
-    final damage = state.cumulativeDamage;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: alive ? C.greenSoft.withOpacity(0.85) : C.danger.withOpacity(0.8),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Text(
-        '${alive ? "🌿" : "💀"} ${alive ? "ALIVE" : "DEAD"} · ${damage.toStringAsFixed(0)}%',
-        style: TextStyle(
-          fontWeight: FontWeight.w700,
-          fontSize: 12,
-          color: alive ? C.greenDark : Colors.white,
-        ),
       ),
     );
   }
@@ -436,18 +362,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         SizedBox(width: 12),
                         Text(
                           'Start New Simulation',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                         ),
                       ],
                     ),
                     const SizedBox(height: 20),
-                    const Text(
-                      'Select a plant to begin:',
-                      style: TextStyle(color: C.textMuted),
-                    ),
+                    const Text('Select a plant to begin:',
+                        style: TextStyle(color: C.textMuted)),
                     const SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -466,13 +387,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ? plant.commonNames.first
                               : plant.id;
                           return DropdownMenuItem(
-                            value: plant.id,
-                            child: Text(displayName),
-                          );
+                              value: plant.id, child: Text(displayName));
                         }).toList(),
-                        onChanged: (value) {
-                          setState(() => selectedPlant = value);
-                        },
+                        onChanged: (value) => setState(() => selectedPlant = value),
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -481,9 +398,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       height: 48,
                       child: ElevatedButton(
                         onPressed: isLoading ? null : _startSimulation,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: C.green,
-                        ),
+                        style: ElevatedButton.styleFrom(backgroundColor: C.green),
                         child: isLoading
                             ? const SizedBox(
                                 height: 20,
@@ -493,13 +408,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   valueColor: AlwaysStoppedAnimation(C.bg),
                                 ),
                               )
-                            : const Text(
-                                'Start Simulation',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                ),
-                              ),
+                            : const Text('Start Simulation',
+                                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                       ),
                     ),
                     if (error != null) ...[
@@ -507,17 +417,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: C.danger.withOpacity(0.1),
+                          color: C.danger.withValues(alpha: 0.1),
                           border: Border.all(color: C.danger),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: Text(
-                          error!,
-                          style: const TextStyle(
-                            color: C.danger,
-                            fontSize: 12,
-                          ),
-                        ),
+                        child: Text(error!,
+                            style: const TextStyle(color: C.danger, fontSize: 12)),
                       ),
                     ],
                   ],
@@ -531,36 +436,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildRunningView() {
-    final plantState = _buildPlantState();
-
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth > 1100) {
-          return _buildWideLayout(plantState);
+          return _buildWideLayout();
         } else if (constraints.maxWidth > 700) {
-          return _buildMediumLayout(plantState);
+          return _buildMediumLayout();
         } else {
-          return _buildNarrowLayout(plantState);
+          return _buildNarrowLayout();
         }
       },
     );
   }
 
-  Widget _buildWideLayout(PlantState state) {
+  Widget _buildWideLayout() {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
           width: 300,
           child: _scrollCol([
-            _buildPlantPanel(state),
-            _buildCoreStatePanel(state),
-            _buildPhenologyPanel(state),
+            _buildPlantPanel(),
+            _buildCoreStatePanel(),
+            _buildPhenologyPanel(),
           ]),
         ),
         Expanded(
           child: _scrollCol([
-            _buildEnvironmentPanel(state),
+            _buildEnvironmentPanel(),
             _buildHistoryPanel(),
             _buildAgentStatsPanel(),
           ]),
@@ -576,23 +479,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildMediumLayout(PlantState state) {
+  Widget _buildMediumLayout() {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
           flex: 3,
           child: _scrollCol([
-            _buildPlantPanel(state),
-            _buildEnvironmentPanel(state),
+            _buildPlantPanel(),
+            _buildEnvironmentPanel(),
             _buildHistoryPanel(),
           ]),
         ),
         Expanded(
           flex: 2,
           child: _scrollCol([
-            _buildCoreStatePanel(state),
-            _buildPhenologyPanel(state),
+            _buildCoreStatePanel(),
+            _buildPhenologyPanel(),
             _buildAgentStatsPanel(),
             _buildActionsPanel(),
             _buildControlPanel(),
@@ -602,12 +505,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildNarrowLayout(PlantState state) {
+  Widget _buildNarrowLayout() {
     return _scrollCol([
-      _buildPlantPanel(state),
-      _buildCoreStatePanel(state),
-      _buildPhenologyPanel(state),
-      _buildEnvironmentPanel(state),
+      _buildPlantPanel(),
+      _buildCoreStatePanel(),
+      _buildPhenologyPanel(),
+      _buildEnvironmentPanel(),
       _buildHistoryPanel(),
       _buildAgentStatsPanel(),
       _buildActionsPanel(),
@@ -627,9 +530,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // === PANEL WIDGETS ===
+  // ── panels — all read directly from simulationState map ─────────────────────
 
-  Widget _buildPlantPanel(PlantState state) {
+  Widget _buildPlantPanel() {
+    final stageLabel = _stage.label;
+    final day = _i('hour') ~/ 24;
     return Panel(
       child: Column(
         children: [
@@ -637,7 +542,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Center(child: PlantVisual(state: simulationState ?? {})),
           const SizedBox(height: 6),
           Text(
-            '${selectedPlant ?? "Plant"} · ${state.stageLabel} · Day ${state.day}',
+            '$_selectedPlantDisplayName · $stageLabel · Day $day',
             style: const TextStyle(color: C.textMuted, fontSize: 12),
           ),
         ],
@@ -645,51 +550,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildCoreStatePanel(PlantState state) {
+  Widget _buildCoreStatePanel() {
+    final biomass = _d('biomass');
+    final leafArea = _d('leaf_area');
+    final thermalTime = _d('thermal_time');
+    final damage = _d('cumulative_damage');
+    final waterStress = _d('water_stress');
+    final tempStress = _d('temp_stress');
+    final nutrientStress = _d('nutrient_stress');
+
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const PanelTitle('Core State'),
-          MetricTile(
-            label: 'Biomass',
-            value: state.biomass.toStringAsFixed(1),
-            unit: 'g',
-          ),
+          MetricTile(label: 'Biomass', value: biomass.toStringAsFixed(1), unit: 'g'),
           const SizedBox(height: 6),
           MetricTile(
-            label: 'Leaf Area',
-            value: state.leafArea.toStringAsFixed(3),
-            unit: 'm²',
-          ),
+              label: 'Leaf Area', value: leafArea.toStringAsFixed(3), unit: 'm²'),
           const SizedBox(height: 6),
           MetricTile(
-            label: 'Thermal Time',
-            value: state.thermalTime.toStringAsFixed(0),
-            unit: '°C·h',
-          ),
+              label: 'Thermal Time',
+              value: thermalTime.toStringAsFixed(0),
+              unit: '°C·h'),
           const SizedBox(height: 6),
           MetricTile(
             label: 'Damage',
-            value: state.cumulativeDamage.toStringAsFixed(1),
+            value: damage.toStringAsFixed(1),
             unit: '%',
-            warn: state.cumulativeDamage > 20,
+            warn: damage > 20,
           ),
           const SizedBox(height: 8),
-          BarGauge(value: state.cumulativeDamage),
+          BarGauge(value: damage),
           const SizedBox(height: 3),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('0%', style: TextStyle(fontSize: 9, color: C.textMuted)),
               Text(
-                '${state.cumulativeDamage.toStringAsFixed(0)}%',
+                '${damage.toStringAsFixed(0)}%',
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
-                  color: state.cumulativeDamage < 30
+                  color: damage < 30
                       ? C.green
-                      : state.cumulativeDamage < 60
+                      : damage < 60
                           ? C.warn
                           : C.danger,
                 ),
@@ -698,9 +603,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          _stressRow('Water', state.waterStress, C.water),
-          _stressRow('Temperature', state.tempStress, C.hvac),
-          _stressRow('Nutrient', state.nutrientStress, C.nutrient),
+          _stressRow('Water', waterStress, C.water),
+          _stressRow('Temperature', tempStress, C.hvac),
+          _stressRow('Nutrient', nutrientStress, C.nutrient),
         ],
       ),
     );
@@ -713,14 +618,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           SizedBox(
             width: 80,
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 11, color: C.textMuted),
-            ),
+            child: Text(label, style: const TextStyle(fontSize: 11, color: C.textMuted)),
           ),
-          Expanded(
-            child: BarGauge(value: value * 100, color: color, height: 4),
-          ),
+          Expanded(child: BarGauge(value: value * 100, color: color, height: 4)),
           const SizedBox(width: 6),
           SizedBox(
             width: 30,
@@ -735,16 +635,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildPhenologyPanel(PlantState state) {
+  Widget _buildPhenologyPanel() {
+    final stage = _stage;
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const PanelTitle('Growth Stage'),
-          PhenologyBar(current: GrowthStage.fromIndex(state.stage)),
+          PhenologyBar(current: stage),
           const SizedBox(height: 4),
           Text(
-            state.stageLabel,
+            stage.label,
             style: const TextStyle(fontSize: 11, color: C.textMuted),
             textAlign: TextAlign.center,
           ),
@@ -753,7 +654,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildEnvironmentPanel(PlantState state) {
+  Widget _buildEnvironmentPanel() {
+    // NOTE: backend sends VPD as uppercase key "VPD"
+    final soilWater = _d('soil_water');
+    final airTemp = _d('air_temp');
+    final soilTemp = _d('soil_temp');
+    final rh = _d('relative_humidity');
+    final par = _d('light_PAR');
+    final vpd = (simulationState?['VPD'] ?? 0.0).toDouble();
+    final soilN = _d('soil_N');
+    final soilEC = _d('soil_EC');
+
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -767,30 +678,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
             crossAxisSpacing: 6,
             childAspectRatio: 2.6,
             children: [
-              _envTile(
-                'Soil Moisture',
-                '${state.soilWater.toStringAsFixed(1)}%',
-                state.soilWater < 15 ? C.danger : null,
-              ),
-              _envTile(
-                'Air Temp',
-                '${state.airTemp.toStringAsFixed(1)}°C',
-                (state.airTemp > 33 || state.airTemp < 12) ? C.danger : null,
-              ),
-              _envTile('Humidity', '${state.relativeHumidity.toStringAsFixed(0)}%', null),
-              _envTile('PAR', state.lightPAR.toStringAsFixed(0), null),
-              _envTile('VPD', '${state.vpd.toStringAsFixed(2)} kPa', null),
-              _envTile('Soil Temp', '${state.soilTemp.toStringAsFixed(1)}°C', null),
-              _envTile(
-                'Soil N',
-                '${state.soilN.toStringAsFixed(0)} ppm',
-                state.soilN < 60 ? C.warn : null,
-              ),
-              _envTile(
-                'Soil EC',
-                '${state.soilEC.toStringAsFixed(2)} mS/cm',
-                state.soilEC > 3.5 ? C.danger : null,
-              ),
+              _envTile('Soil Moisture', '${soilWater.toStringAsFixed(1)}%',
+                  soilWater < 15 ? C.danger : null),
+              _envTile('Air Temp', '${airTemp.toStringAsFixed(1)}°C',
+                  (airTemp > 33 || airTemp < 12) ? C.danger : null),
+              _envTile('Humidity', '${rh.toStringAsFixed(0)}%', null),
+              _envTile('PAR', par.toStringAsFixed(0), null),
+              _envTile('VPD', '${vpd.toStringAsFixed(2)} kPa', null),
+              _envTile('Soil Temp', '${soilTemp.toStringAsFixed(1)}°C', null),
+              _envTile('Soil N', '${soilN.toStringAsFixed(0)} ppm',
+                  soilN < 60 ? C.warn : null),
+              _envTile('Soil EC', '${soilEC.toStringAsFixed(2)} mS/cm',
+                  soilEC > 3.5 ? C.danger : null),
             ],
           ),
         ],
@@ -804,7 +703,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       decoration: BoxDecoration(
         color: C.bg,
         borderRadius: BorderRadius.circular(6),
-        border: alert != null ? Border.all(color: alert.withOpacity(0.4)) : null,
+        border: alert != null ? Border.all(color: alert.withValues(alpha: 0.4)) : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -831,7 +730,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: const [
             PanelTitle('History'),
-            Text('No history data yet', style: TextStyle(color: C.textMuted, fontSize: 12)),
+            Text('No history data yet',
+                style: TextStyle(color: C.textMuted, fontSize: 12)),
           ],
         ),
       );
@@ -845,43 +745,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           PanelTitle('History (${history.length} hours)'),
-          _chartRow(
-            'Biomass',
-            slice.map((h) => (h['biomass'] ?? 0.0).toDouble()).toList(),
-            0,
-            300,
-            C.green,
-          ),
+          _chartRow('Biomass',
+              slice.map<double>((h) => (h['biomass'] ?? 0.0).toDouble()).toList(),
+              0, 300, C.green),
           const SizedBox(height: 8),
-          _chartRow(
-            'Damage',
-            slice.map((h) => (h['cumulative_damage'] ?? 0.0).toDouble()).toList(),
-            0,
-            100,
-            C.danger,
-          ),
+          _chartRow('Damage',
+              slice.map<double>((h) => (h['cumulative_damage'] ?? 0.0).toDouble()).toList(),
+              0, 100, C.danger),
           const SizedBox(height: 8),
-          _chartRow(
-            'Soil Moisture',
-            slice.map((h) => (h['soil_water'] ?? 0.0).toDouble()).toList(),
-            0,
-            50,
-            C.water,
-          ),
+          _chartRow('Soil Moisture',
+              slice.map<double>((h) => (h['soil_water'] ?? 0.0).toDouble()).toList(),
+              0, 50, C.water),
           const SizedBox(height: 8),
-          _chartRow(
-            'Air Temp',
-            slice.map((h) => (h['air_temp'] ?? 0.0).toDouble()).toList(),
-            5,
-            45,
-            C.warn,
-          ),
+          _chartRow('Air Temp',
+              slice.map<double>((h) => (h['air_temp'] ?? 0.0).toDouble()).toList(),
+              5, 45, C.warn),
         ],
       ),
     );
   }
 
-  Widget _chartRow(String label, List<double> data, double minY, double maxY, Color color) {
+  Widget _chartRow(
+      String label, List<double> data, double minY, double maxY, Color color) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -892,11 +777,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             if (data.isNotEmpty)
               Text(
                 data.last.toStringAsFixed(1),
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: color,
-                ),
+                style:
+                    TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color),
               ),
           ],
         ),
@@ -907,6 +789,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildAgentStatsPanel() {
+    final reasoning = agentStats != null
+        ? (agentStats!['reasoning'] as Map<String, dynamic>? ?? {})
+        : <String, dynamic>{};
+
+    final rows = <MapEntry<String, String>>[];
+    if (agentStats != null) {
+      rows.add(MapEntry(
+          'Monitor', agentStats!['monitor_enabled'] == true ? 'Enabled' : 'Disabled'));
+      rows.add(MapEntry('Total Alerts', '${reasoning['total_alerts'] ?? 0}'));
+      rows.add(MapEntry('Warnings', '${reasoning['warnings'] ?? 0}'));
+      rows.add(MapEntry('Criticals', '${reasoning['criticals'] ?? 0}'));
+      rows.add(
+          MapEntry('Executor Actions', '${agentStats!['executor_actions'] ?? 0}'));
+    }
+
     return Panel(
       accentLeft: C.info,
       child: Column(
@@ -914,15 +811,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           const PanelTitle('Agent Statistics'),
           if (agentStats == null)
-            const Text('No agent data', style: TextStyle(color: C.textMuted, fontSize: 12))
+            const Text('No agent data',
+                style: TextStyle(color: C.textMuted, fontSize: 12))
           else
-            ...agentStats!.entries.map((e) => Padding(
+            ...rows.map((e) => Padding(
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(e.key, style: const TextStyle(fontSize: 12, color: C.textMuted)),
-                      Text('${e.value}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      Text(e.key,
+                          style: const TextStyle(fontSize: 12, color: C.textMuted)),
+                      Text(e.value,
+                          style: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600)),
                     ],
                   ),
                 )),
@@ -948,46 +849,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               AnimButton(
                 label: '💧 Water',
-                color: C.water.withOpacity(0.3),
+                color: C.water.withValues(alpha: 0.3),
                 compact: true,
                 onTap: () => _executeAction(ActionType.water, {'volume_L': 0.2}),
               ),
               AnimButton(
                 label: '💡 Light',
-                color: C.light.withOpacity(0.3),
+                color: C.light.withValues(alpha: 0.3),
                 compact: true,
-                onTap: () => _executeAction(ActionType.light, {
-                  'target_PAR': 600,
-                  'power_W': 100,
-                }),
+                onTap: () =>
+                    _executeAction(ActionType.light, {'target_PAR': 600, 'power_W': 100}),
               ),
               AnimButton(
                 label: '🧪 Feed',
-                color: C.nutrient.withOpacity(0.3),
+                color: C.nutrient.withValues(alpha: 0.3),
                 compact: true,
-                onTap: () => _executeAction(ActionType.nutrient, {
-                  'N_ppm': 50,
-                  'P_ppm': 15,
-                  'K_ppm': 40,
-                }),
+                onTap: () => _executeAction(
+                    ActionType.nutrient, {'N_ppm': 50, 'P_ppm': 15, 'K_ppm': 40}),
               ),
               AnimButton(
                 label: '🌡️ Cool',
-                color: C.hvac.withOpacity(0.3),
+                color: C.hvac.withValues(alpha: 0.3),
                 compact: true,
-                onTap: () => _executeAction(ActionType.hvac, {'target_temp_C': 25}),
+                onTap: () =>
+                    _executeAction(ActionType.hvac, {'target_temp_C': 25}),
               ),
               AnimButton(
                 label: '💨 Humidity',
-                color: C.humidity.withOpacity(0.3),
+                color: C.humidity.withValues(alpha: 0.3),
                 compact: true,
-                onTap: () => _executeAction(ActionType.humidity, {'target_RH': 65}),
+                onTap: () =>
+                    _executeAction(ActionType.humidity, {'target_RH': 65}),
               ),
               AnimButton(
                 label: '🌬️ Vent',
-                color: C.vent.withOpacity(0.3),
+                color: C.vent.withValues(alpha: 0.3),
                 compact: true,
-                onTap: () => _executeAction(ActionType.ventilation, {'rate': 0.5}),
+                onTap: () =>
+                    _executeAction(ActionType.ventilation, {'rate': 0.5}),
               ),
             ],
           ),
@@ -1009,9 +908,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onPressed: isLoading ? null : _stopSimulation,
               icon: const Icon(Icons.stop),
               label: const Text('Stop Simulation'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: C.danger,
-              ),
+              style: ElevatedButton.styleFrom(backgroundColor: C.danger),
             ),
           ),
         ],

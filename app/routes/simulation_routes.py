@@ -221,10 +221,6 @@ def start_simulation():
             _engine.set_daily_regime(enabled="True")
         else:
             _engine.set_daily_regime(enabled="False")
-            
-        # currently set daily regime to always False
-        _engine.set_daily_regime(enabled="False")
-        _engine.daily_regime_enabled = False
 
         # 3. Create agent orchestrator (independent — attaches via hooks)
         _orchestrator = AgentOrchestrator.create(
@@ -326,7 +322,7 @@ def get_plants():
     for profile_id, profile in DEFAULT_PROFILES.items():
         plants.append({
             'id': profile_id,
-            'name': profile.profile_id,
+            'name': profile.species_name,
             'common_names': profile.common_names if hasattr(profile, 'common_names') else []
         })
 

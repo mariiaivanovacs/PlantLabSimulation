@@ -72,6 +72,7 @@ def execute():
         'success': result.success,
         'message': result.message,
         'changes': result.changes,
+        'error': None if result.success else result.message,
     })
 
 
@@ -88,6 +89,16 @@ def executor_log():
         'total': len(log),
         'log': log[-limit:],
     })
+
+
+@bp.route('/alerts/clear', methods=['POST'])
+def clear_alerts():
+    """Clear all alert history in the reasoning agent."""
+    orch, err = _require_orchestrator()
+    if err:
+        return err
+    orch.reasoning_agent.reset()
+    return jsonify({'success': True, 'message': 'Alert history cleared'})
 
 
 @bp.route('/monitor/enable', methods=['POST'])

@@ -21,6 +21,7 @@ class ActionCard extends StatelessWidget {
     final api = ApiClient();
     try {
       final res = await api.executeAction(toolType, params);
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(res.success ? "Executed" : "Failed"),
@@ -28,6 +29,7 @@ class ActionCard extends StatelessWidget {
         ),
       );
     } catch (e) {
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Error: $e"),

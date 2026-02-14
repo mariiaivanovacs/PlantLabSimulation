@@ -1,10 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:http/http.dart' as http; // ignore: depend_on_referenced_packages
 
-/// API client for Flask backend at 192.168.1.22:5010
+/// API client for Flask backend.
+/// Override the base URL at build time:
+///   flutter run --dart-define=API_BASE_URL=http://192.168.1.22:5010/api
 class ApiClient {
-  static const String baseUrl = 'http://192.168.1.22:5010/api';
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:5010/api',
+  );
 
   // Singleton instance
   static final ApiClient _instance = ApiClient._internal();
@@ -15,8 +20,9 @@ class ApiClient {
 
   ApiClient._internal();
 
-  // Helper: make GET request
-  // Accept 400 too — backend returns 400 (not 404) when no simulation is running
+  // Helper: make GET request.
+  // Backend returns 400 (not 404/503) when no simulation is running,
+  // so we decode those bodies too (they contain {success:false, error:...}).
   Future<dynamic> getRequest(String endpoint) async {
     try {
       final url = Uri.parse('$baseUrl$endpoint');
@@ -35,7 +41,9 @@ class ApiClient {
     }
   }
 
-  // Helper: make POST request
+  // Helper: make POST request.
+  // Backend returns 400 (not 404/503) when no simulation is running,
+  // so we decode those bodies too (they contain {success:false, error:...}).
   Future<dynamic> postRequest(
       String endpoint, Map<String, dynamic> body) async {
     try {
@@ -147,6 +155,7 @@ class ApiClient {
     final response = await postRequest('/simulation/stop', {});
     return SimulationStopResponse.fromJson(response);
   }
+
 }
 
 // --- Response Models ---
@@ -482,3 +491,4 @@ class SimulationStopResponse {
     );
   }
 }
+

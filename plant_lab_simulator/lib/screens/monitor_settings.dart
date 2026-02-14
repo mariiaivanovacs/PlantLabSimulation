@@ -107,6 +107,41 @@ class _MonitorSettingsScreenState extends State<MonitorSettingsScreen> {
     }
   }
 
+  Future<void> _clearAlertHistory() async {
+    try {
+      final response = await _api.postRequest('/agents/alerts/clear', {});
+      final success = response['success'] ?? false;
+      if (!mounted) return;
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Alert history cleared'),
+            backgroundColor: C.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        _loadMonitorStatus();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed: ${response['error'] ?? 'Unknown error'}'),
+            backgroundColor: C.danger,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: C.danger,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -161,7 +196,7 @@ class _MonitorSettingsScreenState extends State<MonitorSettingsScreen> {
                             Switch(
                               value: monitorEnabled,
                               onChanged: _toggleMonitor,
-                              activeColor: C.green,
+                              activeThumbColor: C.green,
                               inactiveThumbColor: C.textDim,
                             ),
                           ],
@@ -304,18 +339,11 @@ class _MonitorSettingsScreenState extends State<MonitorSettingsScreen> {
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Alert history cleared'),
-                                  backgroundColor: C.green,
-                                ),
-                              );
-                            },
+                            onPressed: _clearAlertHistory,
                             icon: const Icon(Icons.delete_outline),
                             label: const Text('Clear Alert History'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: C.danger.withOpacity(0.2),
+                              backgroundColor: C.danger.withValues(alpha: 0.2),
                               foregroundColor: C.danger,
                             ),
                           ),
@@ -348,7 +376,7 @@ class _StatCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: C.bg,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,

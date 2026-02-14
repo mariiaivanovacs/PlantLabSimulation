@@ -57,6 +57,13 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
         title: const Text('Agent Diagnostics'),
         backgroundColor: C.panel,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: isLoading ? null : _fetchDiagnostics,
+            tooltip: 'Refresh',
+          ),
+        ],
       ),
       backgroundColor: C.bg,
       body: isLoading
@@ -173,7 +180,7 @@ class _DiagnosticCard extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: _statusColor().withOpacity(0.15),
+                  color: _statusColor().withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(

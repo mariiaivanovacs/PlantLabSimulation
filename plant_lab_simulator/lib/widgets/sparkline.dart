@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../theme.dart';
 
 /// A simple sparkline chart that draws the last N values.
 class Sparkline extends StatelessWidget {
@@ -73,7 +72,7 @@ class _SparkPainter extends CustomPainter {
         ..shader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [color.withOpacity(0.25), color.withOpacity(0)],
+          colors: [color.withValues(alpha: 0.25), color.withValues(alpha: 0)],
         ).createShader(Rect.fromLTWH(0, 0, size.width, size.height)),
     );
 

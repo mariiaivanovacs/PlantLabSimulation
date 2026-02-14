@@ -58,6 +58,13 @@ class _ExecutorLogScreenState extends State<ExecutorLogScreen> {
         title: const Text('Executor Action Log'),
         backgroundColor: C.panel,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: isLoading ? null : _fetchExecutorLog,
+            tooltip: 'Refresh',
+          ),
+        ],
       ),
       backgroundColor: C.bg,
       body: isLoading
@@ -216,7 +223,7 @@ class _ActionLogTileState extends State<_ActionLogTile> {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: _statusColor().withOpacity(0.2),
+                      color: _statusColor().withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(

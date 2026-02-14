@@ -57,7 +57,7 @@ class PanelTitle extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: (badgeColor ?? C.warn).withOpacity(0.2),
+                color: (badgeColor ?? C.warn).withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(badge!,
@@ -150,7 +150,7 @@ class BarGauge extends StatelessWidget {
           tween: Tween(end: (value / 100).clamp(0, 1)),
           duration: const Duration(milliseconds: 500),
           curve: Curves.easeInOut,
-          builder: (_, v, __) => FractionallySizedBox(
+          builder: (context, v, child) => FractionallySizedBox(
             widthFactor: v,
             alignment: Alignment.centerLeft,
             child: Container(
@@ -209,7 +209,7 @@ class _AnimButtonState extends State<AnimButton> {
             vertical: widget.compact ? 6 : 10,
           ),
           decoration: BoxDecoration(
-            color: _pressed ? widget.color.withOpacity(0.6) : widget.color,
+            color: _pressed ? widget.color.withValues(alpha: 0.6) : widget.color,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
