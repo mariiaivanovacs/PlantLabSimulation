@@ -516,8 +516,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: 300,
+        Expanded(
+          flex: 3,
           child: _scrollCol([
             _buildPlantPanel(),
             _buildCoreStatePanel(),
@@ -525,14 +525,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ]),
         ),
         Expanded(
+          flex: 4,
           child: _scrollCol([
             _buildEnvironmentPanel(),
             _buildHistoryPanel(),
             _buildAgentStatsPanel(),
           ]),
         ),
-        SizedBox(
-          width: 340,
+        Expanded(
+          flex: 3,
           child: _scrollCol([
             _buildStepPanel(),
             _buildActionsPanel(),
@@ -689,7 +690,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Row(
         children: [
           SizedBox(
-            width: 80,
+            width: 100,
             child: Text(label,
                 style: const TextStyle(fontSize: 14, color: C.textMuted)),
           ),
@@ -697,7 +698,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: BarGauge(value: value * 100, color: color, height: 6)),
           const SizedBox(width: 6),
           SizedBox(
-            width: 40,
+            width: 44,
             child: Text(
               '${(value * 100).toStringAsFixed(0)}%',
               textAlign: TextAlign.right,
@@ -750,7 +751,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             physics: const NeverScrollableScrollPhysics(),
             mainAxisSpacing: 6,
             crossAxisSpacing: 6,
-            childAspectRatio: 2.6,
+            childAspectRatio: 2.0,
             children: [
               _envTile('Soil Moisture', '${soilWater.toStringAsFixed(1)}%',
                   soilWater < 15 ? C.danger : null),
