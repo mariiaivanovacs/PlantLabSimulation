@@ -303,7 +303,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 Text(
                   'Flask-Powered Growth Simulation',
-                  style: TextStyle(color: C.textMuted, fontSize: 11),
+                  style: TextStyle(color: C.textMuted, fontSize: 13),
                 ),
               ],
             ),
@@ -318,7 +318,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Text(
                 'Day $day · H$hour',
                 style:
-                    const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                    const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
               ),
             ),
             const SizedBox(width: 10),
@@ -335,7 +335,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 '${alive ? "🌿" : "💀"} ${alive ? "ALIVE" : "DEAD"} · ${damage.toStringAsFixed(0)}%',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  fontSize: 12,
+                  fontSize: 14,
                   color: alive ? C.greenDark : Colors.white,
                 ),
               ),
@@ -939,7 +939,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const PanelTitle('Manual Actions'),
           const Text(
             'Execute actions directly on the backend:',
-            style: TextStyle(color: C.textMuted, fontSize: 11),
+            style: TextStyle(color: C.textMuted, fontSize: 13),
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -1012,7 +1012,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const PanelTitle('Manual Step'),
           const Text(
             'Advance simulation by:',
-            style: TextStyle(color: C.textMuted, fontSize: 11),
+            style: TextStyle(color: C.textMuted, fontSize: 13),
           ),
           const SizedBox(height: 8),
           Wrap(
