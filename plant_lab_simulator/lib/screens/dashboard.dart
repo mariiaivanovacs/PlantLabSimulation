@@ -95,7 +95,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (!mounted) return;
         setState(() {
           error = e.toString();
-          simulationRunning = false;
         });
       }
 
@@ -456,20 +455,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       height: 48,
                       child: ElevatedButton(
                         onPressed: isLoading ? null : _startSimulation,
-                        style:
-                            ElevatedButton.styleFrom(backgroundColor: C.green),
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: C.green,
+                            foregroundColor: Colors.white),
                         child: isLoading
                             ? const SizedBox(
                                 height: 20,
                                 width: 20,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation(C.bg),
+                                  valueColor: AlwaysStoppedAnimation(Colors.white),
                                 ),
                               )
-                            : const Text('Start Simulation',
+                            : const Text('Simulate',
                                 style: TextStyle(
-                                    fontWeight: FontWeight.w600, fontSize: 14)),
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 15,
+                                    color: Colors.white)),
                       ),
                     ),
                     if (error != null) ...[
@@ -608,7 +610,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 6),
           Text(
             '$_selectedPlantDisplayName · $stageLabel · Day $day',
-            style: const TextStyle(color: C.textMuted, fontSize: 12),
+            style: const TextStyle(color: C.textMuted, fontSize: 15),
           ),
         ],
       ),
@@ -655,11 +657,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('0%',
-                  style: TextStyle(fontSize: 9, color: C.textMuted)),
+                  style: TextStyle(fontSize: 11, color: C.textMuted)),
               Text(
                 '${damage.toStringAsFixed(0)}%',
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 12,
                   fontWeight: FontWeight.w700,
                   color: damage < 30
                       ? C.green
@@ -669,7 +671,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
               const Text('95% ☠',
-                  style: TextStyle(fontSize: 9, color: C.textMuted)),
+                  style: TextStyle(fontSize: 11, color: C.textMuted)),
             ],
           ),
           const SizedBox(height: 10),
@@ -689,17 +691,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
           SizedBox(
             width: 80,
             child: Text(label,
-                style: const TextStyle(fontSize: 11, color: C.textMuted)),
+                style: const TextStyle(fontSize: 14, color: C.textMuted)),
           ),
           Expanded(
-              child: BarGauge(value: value * 100, color: color, height: 4)),
+              child: BarGauge(value: value * 100, color: color, height: 6)),
           const SizedBox(width: 6),
           SizedBox(
-            width: 30,
+            width: 40,
             child: Text(
               '${(value * 100).toStringAsFixed(0)}%',
               textAlign: TextAlign.right,
-              style: const TextStyle(fontSize: 10, color: C.textMuted),
+              style: const TextStyle(fontSize: 13, color: C.textMuted),
             ),
           ),
         ],
@@ -718,7 +720,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 4),
           Text(
             stage.label,
-            style: const TextStyle(fontSize: 11, color: C.textMuted),
+            style: const TextStyle(fontSize: 14, color: C.textMuted),
             textAlign: TextAlign.center,
           ),
         ],
@@ -783,12 +785,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(label, style: const TextStyle(color: C.textMuted, fontSize: 10)),
+          Text(label, style: const TextStyle(color: C.textMuted, fontSize: 13)),
           Text(
             value,
             style: TextStyle(
               fontWeight: FontWeight.w700,
-              fontSize: 13,
+              fontSize: 17,
               color: alert ?? C.textPrimary,
             ),
           ),
@@ -869,12 +871,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(label,
-                style: const TextStyle(fontSize: 10, color: C.textMuted)),
+                style: const TextStyle(fontSize: 13, color: C.textMuted)),
             if (data.isNotEmpty)
               Text(
                 data.last.toStringAsFixed(1),
                 style: TextStyle(
-                    fontSize: 10, fontWeight: FontWeight.w700, color: color),
+                    fontSize: 13, fontWeight: FontWeight.w700, color: color),
               ),
           ],
         ),
@@ -908,7 +910,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const PanelTitle('Agent Statistics'),
           if (agentStats == null)
             const Text('No agent data',
-                style: TextStyle(color: C.textMuted, fontSize: 12))
+                style: TextStyle(color: C.textMuted, fontSize: 14))
           else
             ...rows.map((e) => Padding(
                   padding: const EdgeInsets.only(bottom: 4),
@@ -917,10 +919,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     children: [
                       Text(e.key,
                           style: const TextStyle(
-                              fontSize: 12, color: C.textMuted)),
+                              fontSize: 14, color: C.textMuted)),
                       Text(e.value,
                           style: const TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.w600)),
+                              fontSize: 14, fontWeight: FontWeight.w600)),
                     ],
                   ),
                 )),

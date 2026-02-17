@@ -186,7 +186,7 @@ class _MonitorSettingsScreenState extends State<MonitorSettingsScreen> {
                                     style: TextStyle(
                                       color:
                                           monitorEnabled ? C.green : C.danger,
-                                      fontSize: 14,
+                                      fontSize: 16,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -212,7 +212,7 @@ class _MonitorSettingsScreenState extends State<MonitorSettingsScreen> {
                       'Alert Statistics',
                       style: TextStyle(
                         color: C.green,
-                        fontSize: 14,
+                        fontSize: 17,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -261,7 +261,7 @@ class _MonitorSettingsScreenState extends State<MonitorSettingsScreen> {
                             'Executor Actions',
                             style: TextStyle(
                               color: C.textMuted,
-                              fontSize: 11,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -269,7 +269,7 @@ class _MonitorSettingsScreenState extends State<MonitorSettingsScreen> {
                           Text(
                             '${stats!['executor_actions']} actions applied',
                             style: const TextStyle(
-                              fontSize: 13,
+                              fontSize: 15,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -284,7 +284,7 @@ class _MonitorSettingsScreenState extends State<MonitorSettingsScreen> {
                     'About Monitor Agent',
                     style: TextStyle(
                       color: C.green,
-                      fontSize: 14,
+                      fontSize: 17,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -297,7 +297,7 @@ class _MonitorSettingsScreenState extends State<MonitorSettingsScreen> {
                           'The Monitor Agent continuously evaluates plant conditions and generates alerts when critical thresholds are exceeded.',
                           style: TextStyle(
                             color: C.textMuted,
-                            fontSize: 12,
+                            fontSize: 14,
                             height: 1.5,
                           ),
                         ),
@@ -306,7 +306,7 @@ class _MonitorSettingsScreenState extends State<MonitorSettingsScreen> {
                           'Monitored Parameters:',
                           style: TextStyle(
                             color: C.textPrimary,
-                            fontSize: 12,
+                            fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -394,7 +394,7 @@ class _StatCard extends StatelessWidget {
             label,
             style: const TextStyle(
               color: C.textMuted,
-              fontSize: 10,
+              fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -426,13 +426,13 @@ class _MonitoredParam extends StatelessWidget {
                   name,
                   style: const TextStyle(
                     color: C.textPrimary,
-                    fontSize: 11,
+                    fontSize: 14,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
                 Text(
                   'Threshold: $threshold',
-                  style: const TextStyle(color: C.textDim, fontSize: 10),
+                  style: const TextStyle(color: C.textDim, fontSize: 13),
                 ),
               ],
             ),

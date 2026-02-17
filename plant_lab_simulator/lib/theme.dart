@@ -50,9 +50,21 @@ class PlantLabTheme {
       ),
       colorScheme: const ColorScheme.dark(
         primary: C.green,
+        onPrimary: Colors.white,
         secondary: C.greenSoft,
+        onSecondary: Colors.white,
         surface: C.panel,
         error: C.danger,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          foregroundColor: Colors.white,
+          textStyle: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
+            color: Colors.white,
+          ),
+        ),
       ),
     );
   }

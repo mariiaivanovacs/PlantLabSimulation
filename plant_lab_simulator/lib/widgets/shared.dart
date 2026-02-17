@@ -51,7 +51,7 @@ class PanelTitle extends StatelessWidget {
         children: [
           Text(text,
               style: const TextStyle(
-                  color: C.green, fontSize: 15, fontWeight: FontWeight.w700)),
+                  color: C.green, fontSize: 19, fontWeight: FontWeight.w700)),
           if (badge != null) ...[
             const SizedBox(width: 8),
             Container(
@@ -96,7 +96,7 @@ class MetricTile extends StatelessWidget {
         children: [
           Flexible(
             child: Text(label,
-                style: const TextStyle(color: C.textMuted, fontSize: 12),
+                style: const TextStyle(color: C.textMuted, fontSize: 15),
                 overflow: TextOverflow.ellipsis),
           ),
           const SizedBox(width: 8),
@@ -106,12 +106,12 @@ class MetricTile extends StatelessWidget {
                   text: value,
                   style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      fontSize: 14,
+                      fontSize: 18,
                       color: warn ? C.warn : C.textPrimary)),
               if (unit != null)
                 TextSpan(
                     text: ' $unit',
-                    style: const TextStyle(color: C.textMuted, fontSize: 11)),
+                    style: const TextStyle(color: C.textMuted, fontSize: 14)),
             ]),
           ),
         ],
