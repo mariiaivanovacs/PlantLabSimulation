@@ -5,7 +5,7 @@ import os
 import math
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
@@ -16,6 +16,7 @@ from data.default_plants import DEFAULT_PROFILES, load_default_profile
 from agents.orchestrator import AgentOrchestrator
 import logging
 from tools.debug import display_metrics, display_final_summary
+from services.bigquery_service import BigQueryService
 
 
 
@@ -119,10 +120,8 @@ def _run_simulation_loop():
         day = hour // 24
         hour_of_day = hour % 24
 
-        # Print status every hour in realtime, every simulated day in speed mode
-        if mode == 'realtime':
-            _print_status(_engine.state, day, hour_of_day)
-        elif hour_of_day == 0 or hour == 1:
+        # Print status once per simulated day (at midnight) to reduce terminal noise
+        if hour_of_day == 0 or hour == 1:
             _print_status(_engine.state, day, hour_of_day)
 
         # Wait based on mode
@@ -166,6 +165,24 @@ def _run_simulation_loop():
         log_path = _orchestrator.save_session_log()
         print(f"Reasoning log: {log_path}")
     print(f"{'='*70}\n")
+
+    # Flush remaining BigQuery rows and write the run summary
+    try:
+        bq = BigQueryService.get()
+        run_row = bq.build_run_row(
+            engine=_engine,
+            user_id=_simulation_config.get('user_id', ''),
+            plant_species=_simulation_config.get('plant_name', ''),
+            tick_gap_hours=_simulation_config.get('hours_per_tick', 1),
+            daily_regime_enabled=bool(_simulation_config.get('daily_regime', True)),
+            started_at=_simulation_config.get('started_at', ''),
+        )
+        bq.log_run_row(run_row)
+        bq.flush_all()
+        if bq.connected:
+            print(f"BigQuery: run summary written ({_engine.state.hour} hourly rows flushed)")
+    except Exception as _bq_exc:
+        logger.warning('BigQuery end-of-run flush failed: %s', _bq_exc)
 
 
 @bp.route('/start', methods=['POST'])
@@ -241,7 +258,21 @@ def start_simulation():
             monitor_enabled=monitor_enabled,
         )
 
-        # Store config
+        # Resolve user_id from auth token (used by BigQuery + simulation count)
+        user_id = ''
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            try:
+                from services.user_service import UserService
+                svc = UserService.get()
+                uid = svc.verify_token(auth_header[len('Bearer '):])
+                if uid:
+                    user_id = uid
+                    svc.increment_simulation_count(uid)
+            except Exception:
+                pass
+
+        # Store config (including user_id and start time for BigQuery run row)
         _simulation_config = {
             'plant_name': plant_name,
             'days': days,
@@ -249,8 +280,24 @@ def start_simulation():
             'hours_per_tick': hours_per_tick,
             'tick_delay': tick_delay,
             'daily_regime': daily_regime,
-            'monitor_enabled': monitor_enabled
+            'monitor_enabled': monitor_enabled,
+            'user_id': user_id,
+            'started_at': datetime.now(timezone.utc).isoformat(),
         }
+
+        # Register BigQuery per-hour hook on the engine
+        try:
+            bq = BigQueryService.get()
+            _engine.register_post_step_hook(bq.make_hourly_hook(
+                user_id=user_id,
+                plant_species=plant_name,
+                tick_gap_hours=hours_per_tick,
+                daily_regime_enabled=bool(daily_regime),
+            ))
+            if bq.connected:
+                logger.info('BigQueryService: hourly hook registered for simulation %s', _engine.simulation_id)
+        except Exception as _bq_exc:
+            logger.warning('BigQuery hook registration failed: %s', _bq_exc)
 
         # Start simulation thread
         _simulation_running = True
@@ -387,11 +434,36 @@ def step_simulation():
         }), 400
 
     data = request.get_json() or {}
-    hours = int(data.get('hours', 1))
-    if hours < 1 or hours > 720:
+
+    # Resolve default step from user profile if token provided
+    default_hours = 1
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        try:
+            from services.user_service import UserService
+            svc = UserService.get()
+            uid = svc.verify_token(auth_header[len('Bearer '):])
+            if uid:
+                profile = svc.get_profile(uid)
+                if profile:
+                    default_hours = profile.get('step_size', 1)
+        except Exception:
+            pass
+
+    from services.user_service import ALLOWED_STEP_SIZES
+    hours_raw = data.get('hours')
+    if hours_raw is None:
+        hours = default_hours
+    else:
+        try:
+            hours = int(hours_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'hours must be an integer.'}), 400
+
+    if hours not in ALLOWED_STEP_SIZES:
         return jsonify({
             'success': False,
-            'error': 'hours must be between 1 and 720.'
+            'error': f'hours must be one of {ALLOWED_STEP_SIZES}.'
         }), 400
 
     for _ in range(hours):
@@ -406,6 +478,84 @@ def step_simulation():
         'state': state_dict,
         'summary': _sanitize(engine.get_summary())
     })
+
+
+@bp.route('/metrics', methods=['GET'])
+def get_metrics():
+    """Get simulation metrics from log files for charting.
+
+    Returns parsed CSV data from the current session log and physics metric files.
+    """
+    engine = get_engine()
+    if engine is None:
+        return jsonify({
+            'success': False,
+            'error': 'No simulation running.'
+        }), 400
+
+    import glob as glob_mod
+
+    result = {'success': True, 'files': {}}
+
+    # Find the current session log (most recent logs_*.txt)
+    log_files = sorted(glob_mod.glob('data/records/logs_*.txt'))
+    if log_files:
+        latest_log = log_files[-1]
+        try:
+            with open(latest_log, 'r') as f:
+                lines = f.readlines()
+            rows = []
+            for line in lines:
+                parts = [p.strip() for p in line.strip().split(',')]
+                if len(parts) >= 9:
+                    try:
+                        rows.append({
+                            'day': float(parts[0]),
+                            'biomass': float(parts[1]),
+                            'stage': parts[2],
+                            'humidity': float(parts[3]),
+                            'air_temp': float(parts[4]),
+                            'co2': float(parts[5]),
+                            'rgr': float(parts[6]),
+                            'et': float(parts[7]),
+                            'water_stress': float(parts[8]),
+                        })
+                    except (ValueError, IndexError):
+                        continue
+            result['files']['session_log'] = rows
+        except Exception:
+            pass
+
+    # Read physics metric files
+    metric_files = {
+        'photosynthesis': ('data/records/photosynthesis.txt', ['p_gross', 'light_par', 'light_interception', 'stress_factor']),
+        'respiration': ('data/records/respiration.txt', ['r_maint', 'biomass', 'air_temp', 'temp_factor']),
+        'leaf': ('data/records/leaf.txt', ['biomass', 'leaf_area', 'expansion_factor']),
+        'soil_water': ('data/records/soil_water.txt', ['old_water', 'new_water', 'irrigation_pct', 'et_pct', 'drainage']),
+        'water_stress': ('data/records/water_stress.txt', ['soil_water', 'wilting', 'opt_min', 'opt_max', 'saturation', 'instant_stress', 'new_stress', 'hours_dry', 'new_hours_dry']),
+        'co2_consumption': ('data/records/co2_consumption.txt', ['co2_consumed']),
+    }
+
+    for key, (filepath, columns) in metric_files.items():
+        try:
+            with open(filepath, 'r') as f:
+                lines = f.readlines()
+            rows = []
+            for line in lines:
+                parts = [p.strip() for p in line.strip().split(',')]
+                if len(parts) >= len(columns):
+                    try:
+                        row = {}
+                        for i, col in enumerate(columns):
+                            row[col] = float(parts[i])
+                        rows.append(row)
+                    except (ValueError, IndexError):
+                        continue
+            result['files'][key] = rows
+        except FileNotFoundError:
+            result['files'][key] = []
+
+    return jsonify(_sanitize(result))
 
 
 @bp.route('/monitor/alerts', methods=['GET'])

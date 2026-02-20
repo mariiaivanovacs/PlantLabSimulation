@@ -16,19 +16,6 @@ from agents.monitor import MonitorAgent, MonitorThresholds
 from agents.reasoning import ReasoningAgent
 from agents.executor import ExecutorAgent
 
-# RAG integration (optional)
-try:
-    from ai.rag.load_index import load_or_build_index
-    from ai.rag.query_engine import PlantDiagnosticQueryEngine
-    _RAG_AVAILABLE = True
-except ImportError:
-    _RAG_AVAILABLE = False
-
-# RAG integration (optional)
-
-# from ai.rag.load_index import load_or_build_index
-# from ai.rag.query_engine import PlantDiagnosticQueryEngine
-_RAG_AVAILABLE = False
 
 
 if TYPE_CHECKING:
@@ -101,23 +88,11 @@ class AgentOrchestrator:
             profile_id=profile.profile_id,
         )
 
-        # --- RAG engine (optional) ---
-        rag_engine = None
-        logger.info(f"RAG availability: {'Yes' if _RAG_AVAILABLE else 'No'}")
-        if _RAG_AVAILABLE:
-            try:
-                index = load_or_build_index()
-                rag_engine = PlantDiagnosticQueryEngine(index)
-                logger.info("RAG engine initialized successfully")
-            except Exception as e:
-                logger.warning(f"RAG unavailable, reasoning uses fallback: {e}")
-
         # --- Reasoning Agent ---
         reasoning = ReasoningAgent(
             plant_id=engine.plant_id,
             simulation_id=engine.simulation_id,
             log_dir="out/reasoning",
-            rag_engine=rag_engine,
         )
 
         # --- Executor Agent ---

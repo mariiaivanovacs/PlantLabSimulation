@@ -26,6 +26,11 @@ from time import time
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(__file__))
 
+from config.settings import initialize_firebase, PORT, HOST
+
+# 1. Инициализация Firebase
+initialize_firebase()
+
 from data.default_plants import DEFAULT_PROFILES, load_default_profile
 from config.settings import HOST, PORT
 

@@ -10,13 +10,50 @@ import os
 import json
 import logging
 from datetime import datetime
-from typing import Dict, List, Any, Optional, TYPE_CHECKING
+from typing import Dict, List, Any, Optional
 from collections import deque
 
-if TYPE_CHECKING:
-    from ai.rag.query_engine import PlantDiagnosticQueryEngine
-
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Gemini prompt template
+# ---------------------------------------------------------------------------
+
+_GEMINI_PROMPT = """\
+You are a plant-physiology AI monitoring a controlled-environment grow room.
+Analyze the health alert below and respond ONLY with a valid JSON object — no markdown, no code fences.
+
+Plant: {plant_id}  |  Hour: {hour}  |  Severity: {severity}
+
+ACTIVE FLAGS:
+{flags}
+
+CURRENT METRICS:
+{metrics}
+
+SPECIES THRESHOLDS:
+{thresholds}
+
+AVAILABLE TOOLS (tool_type: required parameters):
+- watering    : {{"volume_L": <float>}}
+- hvac        : {{"target_temp_C": <float>, "max_rate_C_per_h": <float>}}
+- humidity    : {{"target_RH": <float>}}
+- lighting    : {{"target_PAR": <float>, "power_W": <float>}}
+- nutrient    : {{"N_dose_ppm": <float>, "P_dose_ppm": <float>, "K_dose_ppm": <float>}}
+- ventilation : {{"fan_speed": <float, 0-100>}}
+
+Required JSON response (replace placeholders with real values):
+{{
+  "diagnostic": "<2-4 sentences explaining the root causes and urgency>",
+  "suggested_actions": [
+    {{"tool_type": "<name>", "parameters": {{...}}}}
+  ]
+}}"""
+
+_VALID_TOOL_TYPES = frozenset(
+    {"watering", "hvac", "humidity", "lighting", "nutrient", "ventilation"}
+)
 
 
 # ---------------------------------------------------------------------------
@@ -57,17 +94,42 @@ _FLAG_ACTION_MAP: Dict[str, List[Dict[str, Any]]] = {
 
 class ReasoningAgent:
     """
-    Reasoning Agent with optional RAG-based diagnostics.
+    Reasoning Agent with Gemini LLM diagnostics and optional RAG fallback.
+
+    Analysis priority:
+      1. Gemini LLM (GEMINI_API_KEY in env) — returns diagnostic + actions
+      2. RAG engine (if rag_engine arg supplied)
+      3. Deterministic flag-summary fallback
 
     Core responsibilities:
     - Receive and store WARNING / CRITICAL alerts from MonitorAgent
-    - Query RAG knowledge base for grounded explanations (if rag_engine set)
-    - Suggest deterministic corrective tool actions based on health flags
+    - Query Gemini / RAG for grounded plant-physiology diagnostics
+    - Suggest corrective tool actions (LLM-driven or deterministic)
     - Maintain alert history and statistics
-
-    The RAG engine is optional: if not set, analyze() falls back to a
-    flag-summary-only mode (no LLM call).
     """
+
+    # Shared Gemini client — initialized lazily on first use
+    _gemini_model: Any = None
+    _gemini_ready: bool = False
+
+    # ── Gemini lazy initializer ───────────────────────────────────────────────
+
+    @classmethod
+    def _init_gemini(cls) -> None:
+        if cls._gemini_ready:
+            return
+        cls._gemini_ready = True
+        api_key = os.getenv('GEMINI_API_KEY')
+        if not api_key:
+            logger.info('GEMINI_API_KEY not set — Gemini reasoning disabled')
+            return
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            cls._gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+            logger.info('Gemini reasoning client ready (gemini-1.5-flash)')
+        except Exception as exc:
+            logger.warning('Gemini init failed: %s', exc)
 
     def __init__(
         self,
@@ -75,12 +137,11 @@ class ReasoningAgent:
         simulation_id: str = "unknown",
         max_history: int = 1000,
         log_dir: str = "out/reasoning",
-        rag_engine: Optional["PlantDiagnosticQueryEngine"] = None,
     ):
         self.plant_id = plant_id
         self.simulation_id = simulation_id
         self.log_dir = log_dir
-        self.rag_engine = rag_engine
+        self.rag_engine = None
 
         # Alert history (deque with max size)
         self.alert_history: deque = deque(maxlen=max_history)
@@ -93,14 +154,12 @@ class ReasoningAgent:
         self.warnings_received: int = 0
         self.criticals_received: int = 0
         self.rag_queries: int = 0
+        self.gemini_queries: int = 0
 
         # Ensure log directory exists
         os.makedirs(log_dir, exist_ok=True)
 
-        logger.info(
-            f"ReasoningAgent initialized for plant {plant_id} "
-            f"(RAG {'enabled' if rag_engine else 'disabled'})"
-        )
+        logger.info(f"ReasoningAgent initialized for plant {plant_id}")
 
     # ------------------------------------------------------------------
     # Alert reception (unchanged API)
@@ -143,7 +202,78 @@ class ReasoningAgent:
             logger.info(f"  WARNING: {flag.get('flag')} - {flag.get('metric')}={flag.get('value')}")
 
     # ------------------------------------------------------------------
-    # RAG-powered analysis
+    # Gemini analysis
+    # ------------------------------------------------------------------
+
+    def _gemini_analyze(self, alert: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Send the alert to Gemini and parse the JSON response.
+        Returns a dict with 'diagnostic' and 'suggested_actions', or None on failure.
+        """
+        self._init_gemini()
+        if self._gemini_model is None:
+            return None
+
+        hour = alert.get("meta", {}).get("hour", -1)
+        severity = alert.get("routing", {}).get("highest_severity", "UNKNOWN")
+
+        # Build flag lines
+        flag_lines: List[str] = []
+        for lvl in ("critical", "warning", "info"):
+            for f in alert.get("health_flags", {}).get(lvl, []):
+                flag_lines.append(
+                    f"[{lvl.upper()}] {f.get('flag')}: "
+                    f"{f.get('metric')}={f.get('value')} "
+                    f"(threshold={f.get('threshold')}, "
+                    f"duration={f.get('duration_hours', 0)}h)"
+                )
+
+        # Key metrics (limit to most decision-relevant)
+        metrics = alert.get("metrics", {})
+        key_keys = ("air_temp", "relative_humidity", "soil_water", "VPD",
+                    "light_PAR", "soil_N", "soil_EC", "biomass")
+        metrics_str = ", ".join(
+            f"{k}={round(metrics[k], 2)}" for k in key_keys if k in metrics
+        )
+
+        thresholds = alert.get("species_thresholds_reference", {})
+        thresholds_str = ", ".join(
+            f"{k}={v}" for k, v in list(thresholds.items())[:8]
+        )
+
+        prompt = _GEMINI_PROMPT.format(
+            plant_id=self.plant_id,
+            hour=hour,
+            severity=severity,
+            flags="\n".join(flag_lines) or "None",
+            metrics=metrics_str or "N/A",
+            thresholds=thresholds_str or "N/A",
+        )
+
+        try:
+            response = self._gemini_model.generate_content(prompt)
+            text = response.text.strip()
+            # Strip markdown code fences if model adds them
+            if text.startswith("```"):
+                text = text.split("```")[1]
+                if text.startswith("json"):
+                    text = text[4:]
+                text = text.strip()
+            parsed = json.loads(text)
+            logger.info(
+                f"Gemini analysis at hour {hour}: "
+                f"{len(parsed.get('suggested_actions', []))} action(s) suggested"
+            )
+            return parsed
+        except json.JSONDecodeError as exc:
+            logger.error(f"Gemini JSON parse error at hour {hour}: {exc}")
+            return None
+        except Exception as exc:
+            logger.error(f"Gemini API error at hour {hour}: {exc}")
+            return None
+
+    # ------------------------------------------------------------------
+    # RAG-powered / LLM analysis
     # ------------------------------------------------------------------
 
     def analyze(self, alert: Dict[str, Any]) -> Dict[str, Any]:
@@ -164,12 +294,26 @@ class ReasoningAgent:
         severity = alert.get("routing", {}).get("highest_severity", "UNKNOWN")
         hour = alert.get("meta", {}).get("hour", -1)
 
-        logger.info(f"Analyze RAG was called for alert at hour {hour} with severity {severity}")
+        logger.info(f"Analyze called for alert at hour {hour} (severity={severity})")
+
+        # 1. Try Gemini LLM first
+        gemini_result = self._gemini_analyze(alert)
+        if gemini_result is not None:
+            self.gemini_queries += 1
+            result = {
+                "status": "gemini",
+                "diagnostic": gemini_result.get("diagnostic", ""),
+                "suggested_actions": gemini_result.get("suggested_actions", []),
+                "alert_severity": severity,
+                "hour": hour,
+            }
+            self.diagnostic_history.append(result)
+            return result
+
+        # 2. Fall back to RAG engine
         if self.rag_engine is not None:
-            
             try:
                 diagnostic = self.rag_engine.query(alert)
-                logger.info(f"RAG query successful at hour {hour}, diagnostic length: {len(diagnostic)} chars")
                 self.rag_queries += 1
                 result = {
                     "status": "analyzed",
@@ -178,26 +322,19 @@ class ReasoningAgent:
                     "hour": hour,
                 }
                 logger.info(f"RAG diagnostic at hour {hour}: {len(diagnostic)} chars")
-            except Exception as e:
-                logger.error(f"RAG query failed at hour {hour}: {e}")
-                diagnostic = self._fallback_summary(alert)
-                result = {
-                    "status": "fallback",
-                    "diagnostic": diagnostic,
-                    "alert_severity": severity,
-                    "hour": hour,
-                    "error": str(e),
-                }
-        else:
-            logger.info(f"No RAG engine configured, using fallback summary at hour {hour}")
-            diagnostic = self._fallback_summary(alert)
-            result = {
-                "status": "fallback",
-                "diagnostic": diagnostic,
-                "alert_severity": severity,
-                "hour": hour,
-            }
+                self.diagnostic_history.append(result)
+                return result
+            except Exception as exc:
+                logger.error(f"RAG query failed at hour {hour}: {exc}")
 
+        # 3. Plain text fallback
+        logger.info(f"Using fallback summary at hour {hour}")
+        result = {
+            "status": "fallback",
+            "diagnostic": self._fallback_summary(alert),
+            "alert_severity": severity,
+            "hour": hour,
+        }
         self.diagnostic_history.append(result)
         return result
 
@@ -238,10 +375,29 @@ class ReasoningAgent:
             List of {"tool_type": str, "parameters": dict} ready for
             ExecutorAgent.execute_plan()
         """
+        # If Gemini already produced actions, validate and use them
+        if diagnostic and diagnostic.get("status") == "gemini":
+            llm_actions = diagnostic.get("suggested_actions", [])
+            validated = [
+                a for a in llm_actions
+                if isinstance(a, dict)
+                and isinstance(a.get("tool_type"), str)
+                and a["tool_type"] in _VALID_TOOL_TYPES
+                and isinstance(a.get("parameters"), dict)
+            ]
+            if validated:
+                logger.info(
+                    f"Using {len(validated)} Gemini-suggested action(s): "
+                    + ", ".join(a["tool_type"] for a in validated)
+                )
+                return validated
+            logger.warning("Gemini actions were empty or invalid — falling back to deterministic map")
+
+        # Deterministic flag-to-action fallback
         thresholds = alert.get("species_thresholds_reference", {})
         metrics = alert.get("metrics", {})
         actions: List[Dict[str, Any]] = []
-        seen_tools: set = set()  # avoid duplicate tool calls
+        seen_tools: set = set()
 
         for severity in ("critical", "warning"):
             for flag in alert.get("health_flags", {}).get(severity, []):
@@ -257,12 +413,11 @@ class ReasoningAgent:
                     seen_tools.add(tool_type)
 
                     params = dict(action_template["parameters"])
-                    # Fill None placeholders with species-specific values
                     params = self._fill_params(params, flag_name, thresholds, metrics)
                     actions.append({"tool_type": tool_type, "parameters": params})
 
         if actions:
-            logger.info(f"ReasoningAgent suggests {len(actions)} corrective action(s)")
+            logger.info(f"Deterministic map suggests {len(actions)} corrective action(s)")
         return actions
 
     @staticmethod
@@ -316,6 +471,7 @@ class ReasoningAgent:
             "total_alerts": self.total_alerts_received,
             "warnings": self.warnings_received,
             "criticals": self.criticals_received,
+            "gemini_queries": self.gemini_queries,
             "rag_queries": self.rag_queries,
             "history_size": len(self.alert_history),
             "diagnostics": len(self.diagnostic_history),
@@ -356,4 +512,5 @@ class ReasoningAgent:
         self.total_alerts_received = 0
         self.warnings_received = 0
         self.criticals_received = 0
+        self.gemini_queries = 0
         self.rag_queries = 0

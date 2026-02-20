@@ -10,6 +10,8 @@ import '../models/plant_state.dart';
 import 'diagnostics.dart';
 import 'executor_log.dart';
 import 'monitor_settings.dart';
+import 'metrics_viewer.dart';
+import '../services/auth_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -34,6 +36,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? selectedPlant;
   String? error;
 
+  // Simulation settings
+  int _timeGapHours = 1;
+  int _simulationDays = 30;
+  String _simulationMode = 'speed';
+
+  // User profile (loaded from backend after login)
+  Map<String, dynamic>? _userProfile;
+  bool _profileLoading = false;
+  bool _profileSaving = false;
+  double _potSizeL = 5.0;
+  bool _dailyRegimeEnabled = true;
+
   // ── helpers to read backend state fields safely ─────────────────────────────
 
   double _d(String key, [double fallback = 0.0]) =>
@@ -55,6 +69,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _loadAvailablePlants();
+    _loadUserProfile();
     _startPolling();
   }
 
@@ -103,6 +118,62 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<void> _loadUserProfile() async {
+    if (mounted) setState(() => _profileLoading = true);
+    try {
+      final profile = await _api.getProfile();
+      if (!mounted || profile == null) return;
+      const validSteps = [1, 2, 3, 6, 12, 24];
+      const validPots = [2.0, 5.0, 10.0, 20.0];
+      final rawStep = (profile['step_size'] as num?)?.toInt() ?? 1;
+      final rawPot = (profile['pot_size_L'] as num?)?.toDouble() ?? 5.0;
+      setState(() {
+        _userProfile = profile;
+        _timeGapHours = validSteps.contains(rawStep) ? rawStep : 1;
+        _potSizeL = validPots.contains(rawPot) ? rawPot : 5.0;
+        _dailyRegimeEnabled = profile['daily_regime_enabled'] as bool? ?? true;
+        _simulationDays = (profile['simulation_days'] as num?)?.toInt() ?? 30;
+        // Set default plant from profile once plants are loaded
+        final defPlant = profile['default_plant'] as String?;
+        if (defPlant != null && availablePlants.any((p) => p.id == defPlant)) {
+          selectedPlant = defPlant;
+        }
+      });
+    } catch (_) {
+      // Non-fatal — dashboard works without profile
+    } finally {
+      if (mounted) setState(() => _profileLoading = false);
+    }
+  }
+
+  Future<void> _saveUserProfile() async {
+    setState(() => _profileSaving = true);
+    try {
+      final updated = await _api.updateProfile({
+        'step_size': _timeGapHours,
+        'pot_size_L': _potSizeL,
+        'daily_regime_enabled': _dailyRegimeEnabled,
+        'default_plant': selectedPlant ?? 'tomato_standard',
+      });
+      if (!mounted) return;
+      setState(() => _userProfile = updated);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Settings saved'),
+            backgroundColor: C.green,
+            duration: Duration(seconds: 2)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Failed to save: $e'), backgroundColor: C.danger),
+      );
+    } finally {
+      if (mounted) setState(() => _profileSaving = false);
+    }
+  }
+
   Future<void> _loadAvailablePlants() async {
     try {
       final response = await _api.getAvailablePlants();
@@ -111,6 +182,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         availablePlants = response.plants;
         if (availablePlants.isNotEmpty && selectedPlant == null) {
           selectedPlant = availablePlants.first.id;
+        }
+        // Apply profile default_plant now that plants are loaded
+        final defPlant = _userProfile?['default_plant'] as String?;
+        if (defPlant != null && availablePlants.any((p) => p.id == defPlant)) {
+          selectedPlant = defPlant;
         }
       });
     } catch (e) {
@@ -129,11 +205,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final response = await _api.startSimulation(
         plantName: selectedPlant!,
-        days: 30,
-        mode: 'speed',
-        hoursPerTick: 1,
+        days: _simulationDays,
+        mode: _simulationMode,
+        hoursPerTick: _timeGapHours,
         tickDelay: 0.1,
-        dailyRegime: true,
+        dailyRegime: _dailyRegimeEnabled,
         monitorEnabled: true,
       );
       if (!mounted) return;
@@ -270,7 +346,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Expanded(
             child: simulationRunning && simulationState != null
                 ? _buildRunningView()
-                : _buildStartView(),
+                : _buildProfileView(),
           ),
         ],
       ),
@@ -348,6 +424,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             color: C.panel,
             onSelected: (value) {
               switch (value) {
+                case 'metrics':
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const MetricsViewerScreen()));
+                  break;
                 case 'diagnostics':
                   Navigator.push(
                       context,
@@ -366,9 +448,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       MaterialPageRoute(
                           builder: (_) => const MonitorSettingsScreen()));
                   break;
+                case 'signout':
+                  AuthService.instance.signOut();
+                  break;
               }
             },
             itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'metrics',
+                child: Row(children: [
+                  Icon(Icons.show_chart, color: C.green, size: 18),
+                  SizedBox(width: 8),
+                  Text('Metrics'),
+                ]),
+              ),
               PopupMenuItem(
                 value: 'diagnostics',
                 child: Row(children: [
@@ -393,6 +486,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Text('Monitor Settings'),
                 ]),
               ),
+              PopupMenuItem(
+                value: 'signout',
+                child: Row(children: [
+                  Icon(Icons.logout, color: C.danger, size: 18),
+                  SizedBox(width: 8),
+                  Text('Sign Out',
+                      style: TextStyle(color: C.danger)),
+                ]),
+              ),
             ],
           ),
         ],
@@ -400,99 +502,278 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildStartView() {
+  Widget _buildProfileView() {
+    final displayName =
+        _userProfile?['display_name'] as String? ?? '';
+    final totalSims =
+        (_userProfile?['total_simulations_run'] as num?)?.toInt() ?? 0;
+    final lastSimRaw = _userProfile?['last_simulation_date'] as String?;
+
+    String lastSimStr = 'Never';
+    if (lastSimRaw != null) {
+      try {
+        final dt = DateTime.parse(lastSimRaw).toLocal();
+        lastSimStr =
+            '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+      } catch (_) {}
+    }
+
     return Center(
       child: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Panel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
-                      children: [
-                        Icon(Icons.grass, color: C.green, size: 24),
-                        SizedBox(width: 12),
-                        Text(
-                          'Start New Simulation',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w700),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Panel(
+              accentLeft: C.green,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Welcome header ─────────────────────────────────────
+                  Row(
+                    children: [
+                      const Icon(Icons.eco, color: C.green, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              displayName.isNotEmpty
+                                  ? 'Welcome, $displayName'
+                                  : 'Plant Lab Simulator',
+                              style: const TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.w700),
+                            ),
+                            if (_profileLoading)
+                              const Text('Loading profile…',
+                                  style: TextStyle(
+                                      color: C.textMuted, fontSize: 11)),
+                          ],
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    const Text('Select a plant to begin:',
-                        style: TextStyle(color: C.textMuted)),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: C.panelAlt,
-                        border: Border.all(color: C.border),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: DropdownButton<String>(
-                        isDense: true,
-                        isExpanded: true,
-                        underline: const SizedBox(),
-                        value: selectedPlant,
-                        items: availablePlants.map((plant) {
-                          final displayName = plant.commonNames.isNotEmpty
-                              ? plant.commonNames.first
-                              : plant.id;
-                          return DropdownMenuItem(
-                              value: plant.id, child: Text(displayName));
-                        }).toList(),
-                        onChanged: (value) =>
-                            setState(() => selectedPlant = value),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        onPressed: isLoading ? null : _startSimulation,
-                        style:
-                            ElevatedButton.styleFrom(backgroundColor: C.green),
-                        child: isLoading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation(C.bg),
-                                ),
-                              )
-                            : const Text('Start Simulation',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w600, fontSize: 14)),
-                      ),
-                    ),
-                    if (error != null) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: C.danger.withValues(alpha: 0.1),
-                          border: Border.all(color: C.danger),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(error!,
-                            style:
-                                const TextStyle(color: C.danger, fontSize: 12)),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(color: C.border, height: 1),
+                  const SizedBox(height: 16),
+
+                  // ── Plant ──────────────────────────────────────────────
+                  const Text('Plant',
+                      style: TextStyle(color: C.textMuted, fontSize: 12)),
+                  const SizedBox(height: 6),
+                  _dropdownBox(
+                    child: DropdownButton<String>(
+                      isDense: true,
+                      isExpanded: true,
+                      underline: const SizedBox(),
+                      value: selectedPlant,
+                      items: availablePlants.map((plant) {
+                        final label = plant.commonNames.isNotEmpty
+                            ? plant.commonNames.first
+                            : plant.id;
+                        return DropdownMenuItem(
+                            value: plant.id, child: Text(label));
+                      }).toList(),
+                      onChanged: (v) => setState(() => selectedPlant = v),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── Settings rows ──────────────────────────────────────
+                  _settingsRow(
+                    'Step size',
+                    _dropdownBox(
+                      child: DropdownButton<int>(
+                        isDense: true,
+                        underline: const SizedBox(),
+                        value: _timeGapHours,
+                        items: const [1, 2, 3, 6, 12, 24]
+                            .map((h) => DropdownMenuItem(
+                                value: h, child: Text('${h}h')))
+                            .toList(),
+                        onChanged: (v) =>
+                            setState(() => _timeGapHours = v ?? 1),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _settingsRow(
+                    'Pot size',
+                    _dropdownBox(
+                      child: DropdownButton<double>(
+                        isDense: true,
+                        underline: const SizedBox(),
+                        value: _potSizeL,
+                        items: const [2.0, 5.0, 10.0, 20.0]
+                            .map((l) => DropdownMenuItem(
+                                value: l, child: Text('${l.toInt()} L')))
+                            .toList(),
+                        onChanged: (v) =>
+                            setState(() => _potSizeL = v ?? 5.0),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _settingsRow(
+                    'Daily regime',
+                    Switch(
+                      value: _dailyRegimeEnabled,
+                      onChanged: (v) =>
+                          setState(() => _dailyRegimeEnabled = v),
+                      activeColor: C.green,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _settingsRow(
+                    'Duration (days)',
+                    _dropdownBox(
+                      child: DropdownButton<int>(
+                        isDense: true,
+                        underline: const SizedBox(),
+                        value: _simulationDays,
+                        items: const [7, 14, 30, 60, 90, 180]
+                            .map((d) => DropdownMenuItem(
+                                value: d, child: Text('$d')))
+                            .toList(),
+                        onChanged: (v) =>
+                            setState(() => _simulationDays = v ?? 30),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _settingsRow(
+                    'Mode',
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(value: 'speed', label: Text('Speed')),
+                        ButtonSegment(
+                            value: 'realtime', label: Text('Realtime')),
+                      ],
+                      selected: {_simulationMode},
+                      onSelectionChanged: (v) =>
+                          setState(() => _simulationMode = v.first),
+                      style: const ButtonStyle(
+                        textStyle:
+                            WidgetStatePropertyAll(TextStyle(fontSize: 12)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // ── Buttons ────────────────────────────────────────────
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 44,
+                          child: OutlinedButton(
+                            onPressed: (_profileSaving || _userProfile == null)
+                                ? null
+                                : _saveUserProfile,
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: C.border),
+                              foregroundColor: C.textPrimary,
+                            ),
+                            child: _profileSaving
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: C.green))
+                                : const Text('Save Settings',
+                                    style: TextStyle(fontSize: 13)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 2,
+                        child: SizedBox(
+                          height: 44,
+                          child: ElevatedButton(
+                            onPressed: isLoading ? null : _startSimulation,
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: C.green),
+                            child: isLoading
+                                ? const SizedBox(
+                                    height: 18,
+                                    width: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor:
+                                          AlwaysStoppedAnimation(C.bg),
+                                    ),
+                                  )
+                                : const Text('Start Simulation',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  if (error != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: C.danger.withValues(alpha: 0.1),
+                        border: Border.all(color: C.danger),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(error!,
+                          style:
+                              const TextStyle(color: C.danger, fontSize: 12)),
+                    ),
                   ],
-                ),
+
+                  // ── Stats footer ───────────────────────────────────────
+                  if (_userProfile != null) ...[
+                    const SizedBox(height: 16),
+                    const Divider(color: C.border, height: 1),
+                    const SizedBox(height: 10),
+                    Text(
+                      '$totalSims simulation${totalSims == 1 ? '' : 's'} run'
+                      ' · Last: $lastSimStr',
+                      style:
+                          const TextStyle(color: C.textMuted, fontSize: 11),
+                    ),
+                  ],
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  /// Styled container wrapping a DropdownButton
+  Widget _dropdownBox({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: C.panelAlt,
+        border: Border.all(color: C.border),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: child,
+    );
+  }
+
+  /// Label + control in a horizontal row
+  Widget _settingsRow(String label, Widget control) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(label,
+              style: const TextStyle(color: C.textMuted, fontSize: 12)),
+        ),
+        control,
+      ],
     );
   }
 
@@ -994,14 +1275,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildStepPanel() {
-    const steps = [
-      (1, '1h'),
-      (6, '6h'),
-      (12, '12h'),
-      (24, '1d'),
-      (72, '3d'),
-      (168, '1w'),
-    ];
+    // Only use step sizes allowed by the backend [1,2,3,6,12,24]
+    const presets = [(1, '1h'), (2, '2h'), (3, '3h'), (6, '6h'), (12, '12h'), (24, '1d')];
     return Panel(
       accentLeft: C.info,
       child: Column(
@@ -1016,12 +1291,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Wrap(
             spacing: 6,
             runSpacing: 6,
-            children: steps.map((s) {
+            children: presets.map((s) {
               final hours = s.$1;
               final label = s.$2;
+              final isDefault = hours == _timeGapHours;
               return AnimButton(
-                label: label,
-                color: C.info.withValues(alpha: 0.25),
+                label: isDefault ? '$label *' : label,
+                color: isDefault
+                    ? C.green.withValues(alpha: 0.4)
+                    : C.info.withValues(alpha: 0.25),
                 compact: true,
                 onTap: isLoading ? () {} : () => _stepSimulation(hours),
               );

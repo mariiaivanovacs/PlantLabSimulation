@@ -20,13 +20,27 @@ class ApiClient {
 
   ApiClient._internal();
 
+  // Auth token — set by _AuthGate after Firebase login
+  String? _authToken;
+
+  void setToken(String? token) {
+    _authToken = token;
+  }
+
+  Map<String, String> _buildHeaders({bool json = false}) {
+    final headers = <String, String>{};
+    if (json) headers['Content-Type'] = 'application/json';
+    if (_authToken != null) headers['Authorization'] = 'Bearer $_authToken';
+    return headers;
+  }
+
   // Helper: make GET request.
   // Backend returns 400 (not 404/503) when no simulation is running,
   // so we decode those bodies too (they contain {success:false, error:...}).
   Future<dynamic> getRequest(String endpoint) async {
     try {
       final url = Uri.parse('$baseUrl$endpoint');
-      final response = await http.get(url).timeout(
+      final response = await http.get(url, headers: _buildHeaders()).timeout(
             const Duration(seconds: 10),
             onTimeout: () => throw TimeoutException('Request timeout'),
           );
@@ -51,7 +65,7 @@ class ApiClient {
       final response = await http
           .post(
             url,
-            headers: {'Content-Type': 'application/json'},
+            headers: _buildHeaders(json: true),
             body: jsonEncode(body),
           )
           .timeout(
@@ -66,6 +80,31 @@ class ApiClient {
       }
     } catch (e) {
       throw Exception('POST $endpoint failed: $e');
+    }
+  }
+
+  Future<dynamic> putRequest(
+      String endpoint, Map<String, dynamic> body) async {
+    try {
+      final url = Uri.parse('$baseUrl$endpoint');
+      final response = await http
+          .put(
+            url,
+            headers: _buildHeaders(json: true),
+            body: jsonEncode(body),
+          )
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => throw TimeoutException('Request timeout'),
+          );
+
+      if (response.statusCode == 200 || response.statusCode == 400) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('HTTP ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('PUT $endpoint failed: $e');
     }
   }
 
@@ -160,6 +199,49 @@ class ApiClient {
   Future<SimulationStepResponse> stepSimulation(int hours) async {
     final response = await postRequest('/simulation/step', {'hours': hours});
     return SimulationStepResponse.fromJson(response);
+  }
+
+  /// GET /simulation/metrics
+  Future<Map<String, List<Map<String, dynamic>>>> getMetrics() async {
+    final response = await getRequest('/simulation/metrics');
+    final files = response['files'] as Map<String, dynamic>? ?? {};
+    final result = <String, List<Map<String, dynamic>>>{};
+    for (final entry in files.entries) {
+      final list = entry.value as List<dynamic>? ?? [];
+      result[entry.key] = list
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+    }
+    return result;
+  }
+
+  // --- User profile endpoints ---
+
+  /// POST /auth/profile — create or return existing profile
+  Future<Map<String, dynamic>> createProfile(String displayName) async {
+    final response =
+        await postRequest('/auth/profile', {'display_name': displayName});
+    return Map<String, dynamic>.from(response['profile'] ?? response);
+  }
+
+  /// GET /auth/profile — fetch current user's profile
+  Future<Map<String, dynamic>?> getProfile() async {
+    try {
+      final response = await getRequest('/auth/profile');
+      if (response['success'] == true) {
+        return Map<String, dynamic>.from(response['profile'] ?? {});
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// PUT /auth/profile — partial update of allowed fields
+  Future<Map<String, dynamic>> updateProfile(
+      Map<String, dynamic> patch) async {
+    final response = await putRequest('/auth/profile', patch);
+    return Map<String, dynamic>.from(response['profile'] ?? response);
   }
 
 }

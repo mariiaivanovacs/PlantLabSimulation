@@ -13,11 +13,17 @@ def create_app():
 
     app = Flask(__name__, static_folder=static_dir, static_url_path='')
 
-    # Allow cross-origin requests from any port (needed for flutter run dev server)
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    # CORS configuration - restrict origins in production
+    cors_origins = os.getenv('CORS_ORIGINS', '*').split(',')
+    CORS(app, resources={r"/api/*": {"origins": cors_origins}})
 
-    # Load config
-    app.config['DEBUG'] = True
+
+    # Load config from environment
+    app.config['DEBUG'] = os.getenv('FLASK_DEBUG', 'False') == 'True'
+    app.config['ENV'] = os.getenv('FLASK_ENV', 'development')
+    
+    # Security: Set SECRET_KEY for production
+    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-key-change-in-production')
 
     # Serve Flutter web app as static files
     @app.route('/')
@@ -33,8 +39,15 @@ def create_app():
         return send_from_directory(static_dir, 'index.html')
 
     # Register blueprints
-    from app.routes import simulation_routes, agent_routes
+    from app.routes import simulation_routes, agent_routes, auth_routes
     app.register_blueprint(simulation_routes.bp, url_prefix='/api/simulation')
     app.register_blueprint(agent_routes.bp, url_prefix='/api/agents')
+    app.register_blueprint(auth_routes.bp, url_prefix='/api/auth')
+
+    # Health check endpoint (required for Cloud Run)
+    @app.route('/health')
+    def health_check():
+        from flask import jsonify
+        return jsonify(status='healthy'), 200
 
     return app

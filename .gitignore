@@ -14,6 +14,8 @@ instance/
 
 # Environment
 .env
+.env.local
+.env.*.local
 
 # IDE
 .vscode/
@@ -23,11 +25,28 @@ instance/
 # OS
 .DS_Store
 
-# Firebase
+# Firebase / Credentials (CRITICAL - never commit credentials)
+*-firebase-adminsdk-*.json
 firebase-credentials.json
+google-credentials.json
+secrets.json
 
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.coverage
 
+# Docker
+.dockerignore
 
+# Flutter build
+plant_lab_simulator/build/
+plant_lab_simulator/.dart_tool/
+
+# CI/CD
+.claude/
 
 *.md
 
@@ -42,3 +61,5 @@ data/records/
 
 # folder out 
 out/
+
+*0b18.json
