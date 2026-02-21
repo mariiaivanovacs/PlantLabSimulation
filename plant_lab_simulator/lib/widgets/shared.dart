@@ -51,7 +51,7 @@ class PanelTitle extends StatelessWidget {
         children: [
           Text(text,
               style: const TextStyle(
-                  color: C.green, fontSize: 19, fontWeight: FontWeight.w700)),
+                  color: C.green, fontSize: 22, fontWeight: FontWeight.w700)),
           if (badge != null) ...[
             const SizedBox(width: 8),
             Container(
@@ -63,7 +63,7 @@ class PanelTitle extends StatelessWidget {
               child: Text(badge!,
                   style: TextStyle(
                       color: badgeColor ?? C.warn,
-                      fontSize: 10,
+                      fontSize: 12,
                       fontWeight: FontWeight.w700)),
             ),
           ],
@@ -96,7 +96,7 @@ class MetricTile extends StatelessWidget {
         children: [
           Flexible(
             child: Text(label,
-                style: const TextStyle(color: C.textMuted, fontSize: 15),
+                style: const TextStyle(color: C.textMuted, fontSize: 17),
                 overflow: TextOverflow.ellipsis),
           ),
           const SizedBox(width: 8),
@@ -106,12 +106,12 @@ class MetricTile extends StatelessWidget {
                   text: value,
                   style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      fontSize: 18,
+                      fontSize: 21,
                       color: warn ? C.warn : C.textPrimary)),
               if (unit != null)
                 TextSpan(
                     text: ' $unit',
-                    style: const TextStyle(color: C.textMuted, fontSize: 14)),
+                    style: const TextStyle(color: C.textMuted, fontSize: 16)),
             ]),
           ),
         ],
@@ -216,13 +216,13 @@ class _AnimButtonState extends State<AnimButton> {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (widget.icon != null) ...[
-                Icon(widget.icon, size: 14, color: Colors.white),
+                Icon(widget.icon, size: 16, color: Colors.white),
                 const SizedBox(width: 6),
               ],
               Text(widget.label,
                   style: TextStyle(
                       fontWeight: FontWeight.w600,
-                      fontSize: widget.compact ? 12 : 13,
+                      fontSize: widget.compact ? 14 : 16,
                       color: Colors.white)),
             ],
           ),

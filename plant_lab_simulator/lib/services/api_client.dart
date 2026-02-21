@@ -112,7 +112,6 @@ class ApiClient {
   /// POST /simulation/start
   Future<SimulationStartResponse> startSimulation({
     required String plantName,
-    required int days,
     String mode = 'speed',
     int hoursPerTick = 1,
     double tickDelay = 0.1,
@@ -121,7 +120,6 @@ class ApiClient {
   }) async {
     final response = await postRequest('/simulation/start', {
       'plant_name': plantName,
-      'days': days,
       'mode': mode,
       'hours_per_tick': hoursPerTick,
       'tick_delay': tickDelay,

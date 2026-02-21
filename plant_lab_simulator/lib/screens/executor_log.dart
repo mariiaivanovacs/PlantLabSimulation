@@ -198,7 +198,7 @@ class _ActionLogTileState extends State<_ActionLogTile> {
                           widget.action.toolType.toUpperCase(),
                           style: const TextStyle(
                             fontWeight: FontWeight.w600,
-                            fontSize: 14,
+                            fontSize: 16,
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -208,7 +208,7 @@ class _ActionLogTileState extends State<_ActionLogTile> {
                               : 'No message',
                           style: const TextStyle(
                             color: C.textMuted,
-                            fontSize: 13,
+                            fontSize: 15,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -229,7 +229,7 @@ class _ActionLogTileState extends State<_ActionLogTile> {
                     child: Text(
                       widget.action.success ? 'OK' : 'FAIL',
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: _statusColor(),
                       ),
@@ -238,7 +238,7 @@ class _ActionLogTileState extends State<_ActionLogTile> {
                   const SizedBox(width: 8),
                   Text(
                     'H${widget.action.hour}',
-                    style: const TextStyle(color: C.textDim, fontSize: 12),
+                    style: const TextStyle(color: C.textDim, fontSize: 14),
                   ),
                   const SizedBox(width: 8),
                   Icon(
@@ -261,7 +261,7 @@ class _ActionLogTileState extends State<_ActionLogTile> {
                     'Parameters',
                     style: TextStyle(
                       color: C.textMuted,
-                      fontSize: 13,
+                      fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -279,7 +279,7 @@ class _ActionLogTileState extends State<_ActionLogTile> {
                             '${e.key}:',
                             style: const TextStyle(
                               color: C.textDim,
-                              fontSize: 13,
+                              fontSize: 15,
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -287,7 +287,7 @@ class _ActionLogTileState extends State<_ActionLogTile> {
                             displayValue,
                             style: const TextStyle(
                               fontWeight: FontWeight.w600,
-                              fontSize: 13,
+                              fontSize: 15,
                             ),
                           ),
                         ],

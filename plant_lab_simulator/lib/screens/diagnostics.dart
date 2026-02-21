@@ -172,7 +172,7 @@ class _DiagnosticCard extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: color,
-                    fontSize: 15,
+                    fontSize: 17,
                   ),
                 ),
               ),
@@ -186,7 +186,7 @@ class _DiagnosticCard extends StatelessWidget {
                 child: Text(
                   diagnostic.status.toUpperCase(),
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: _statusColor(),
                   ),
@@ -198,7 +198,7 @@ class _DiagnosticCard extends StatelessWidget {
           Text(
             diagnostic.diagnostic,
             style: const TextStyle(
-                color: C.textMuted, fontSize: 14, height: 1.4),
+                color: C.textMuted, fontSize: 16, height: 1.4),
           ),
         ],
       ),
