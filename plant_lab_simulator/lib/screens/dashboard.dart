@@ -73,15 +73,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final stateResp = await _api.getSimulationState();
         if (!mounted) return;
 
+        final wasRunning = simulationRunning;
+        final nowRunning = stateResp.running;
+        final hasState = stateResp.success && stateResp.state.isNotEmpty;
+        final isAlive = stateResp.state['is_alive'] as bool? ?? true;
+
         setState(() {
-          simulationRunning = stateResp.running;
-          simulationState = stateResp.state;
-          simulationSummary = stateResp.summary;
-          simulationConfig = stateResp.config;
+          simulationRunning = nowRunning;
+          if (hasState) {
+            simulationState = stateResp.state;
+            simulationSummary = stateResp.summary;
+            simulationConfig = stateResp.config;
+          }
           error = null;
         });
 
-        if (simulationRunning) {
+        // Notify user when simulation ends (plant died or finished)
+        if (wasRunning && !nowRunning && mounted) {
+          final deathReason = simulationState?['death_reason'] as String?;
+          final msg = !isAlive
+              ? '💀 Plant died: ${deathReason ?? "unknown"}'
+              : '✅ Simulation complete';
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(msg),
+            backgroundColor: isAlive ? C.green : C.danger,
+            duration: const Duration(seconds: 6),
+          ));
+        }
+
+        if (nowRunning) {
           final histResp = await _api.getSimulationHistory(limit: 100);
           final agentResp = await _api.getAgentStatus();
 
