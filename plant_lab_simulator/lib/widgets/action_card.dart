@@ -45,13 +45,13 @@ class ActionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
           const SizedBox(height: 4),
-          Text(description, style: const TextStyle(color: C.textMuted)),
+          Text(description, style: const TextStyle(color: C.textMuted, fontSize: 15)),
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: () => _execute(context),
-            child: const Text("Execute"),
+            child: const Text("Execute", style: TextStyle(fontSize: 15)),
           )
         ],
       ),

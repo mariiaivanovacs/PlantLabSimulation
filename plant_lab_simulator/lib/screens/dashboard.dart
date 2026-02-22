@@ -88,15 +88,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final stateResp = await _api.getSimulationState();
         if (!mounted) return;
 
+        final wasRunning = simulationRunning;
+        final nowRunning = stateResp.running;
+        final hasState = stateResp.success && stateResp.state.isNotEmpty;
+        final isAlive = stateResp.state['is_alive'] as bool? ?? true;
+
         setState(() {
-          simulationRunning = stateResp.running;
-          simulationState = stateResp.state;
-          simulationSummary = stateResp.summary;
-          simulationConfig = stateResp.config;
+          simulationRunning = nowRunning;
+          if (hasState) {
+            simulationState = stateResp.state;
+            simulationSummary = stateResp.summary;
+            simulationConfig = stateResp.config;
+          }
           error = null;
         });
 
-        if (simulationRunning) {
+        // Notify user when simulation ends (plant died or finished)
+        if (wasRunning && !nowRunning && mounted) {
+          final deathReason = simulationState?['death_reason'] as String?;
+          final msg = !isAlive
+              ? '💀 Plant died: ${deathReason ?? "unknown"}'
+              : '✅ Simulation complete';
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(msg),
+            backgroundColor: isAlive ? C.green : C.danger,
+            duration: const Duration(seconds: 6),
+          ));
+        }
+
+        if (nowRunning) {
           final histResp = await _api.getSimulationHistory(limit: 100);
           final agentResp = await _api.getAgentStatus();
 
@@ -110,7 +130,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (!mounted) return;
         setState(() {
           error = e.toString();
-          simulationRunning = false;
         });
       }
 
@@ -205,9 +224,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final response = await _api.startSimulation(
         plantName: selectedPlant!,
-        days: _simulationDays,
-        mode: _simulationMode,
-        hoursPerTick: _timeGapHours,
+        mode: 'speed',
+        hoursPerTick: 1,
         tickDelay: 0.1,
         dailyRegime: _dailyRegimeEnabled,
         monitorEnabled: true,
@@ -375,12 +393,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   'Plant Lab Simulator',
                   style: TextStyle(
                       color: C.green,
-                      fontSize: 18,
+                      fontSize: 22,
                       fontWeight: FontWeight.w800),
                 ),
                 Text(
                   'Flask-Powered Growth Simulation',
-                  style: TextStyle(color: C.textMuted, fontSize: 11),
+                  style: TextStyle(color: C.textMuted, fontSize: 15),
                 ),
               ],
             ),
@@ -395,7 +413,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Text(
                 'Day $day · H$hour',
                 style:
-                    const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                    const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
               ),
             ),
             const SizedBox(width: 10),
@@ -412,7 +430,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 '${alive ? "🌿" : "💀"} ${alive ? "ALIVE" : "DEAD"} · ${damage.toStringAsFixed(0)}%',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  fontSize: 12,
+                  fontSize: 16,
                   color: alive ? C.greenDark : Colors.white,
                 ),
               ),
@@ -522,229 +540,94 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: Panel(
-              accentLeft: C.green,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Welcome header ─────────────────────────────────────
-                  Row(
-                    children: [
-                      const Icon(Icons.eco, color: C.green, size: 20),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              displayName.isNotEmpty
-                                  ? 'Welcome, $displayName'
-                                  : 'Plant Lab Simulator',
-                              style: const TextStyle(
-                                  fontSize: 15, fontWeight: FontWeight.w700),
-                            ),
-                            if (_profileLoading)
-                              const Text('Loading profile…',
-                                  style: TextStyle(
-                                      color: C.textMuted, fontSize: 11)),
-                          ],
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Panel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.grass, color: C.green, size: 24),
+                        SizedBox(width: 12),
+                        Text(
+                          'Start New Simulation',
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.w700),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  const Divider(color: C.border, height: 1),
-                  const SizedBox(height: 16),
-
-                  // ── Plant ──────────────────────────────────────────────
-                  const Text('Plant',
-                      style: TextStyle(color: C.textMuted, fontSize: 12)),
-                  const SizedBox(height: 6),
-                  _dropdownBox(
-                    child: DropdownButton<String>(
-                      isDense: true,
-                      isExpanded: true,
-                      underline: const SizedBox(),
-                      value: selectedPlant,
-                      items: availablePlants.map((plant) {
-                        final label = plant.commonNames.isNotEmpty
-                            ? plant.commonNames.first
-                            : plant.id;
-                        return DropdownMenuItem(
-                            value: plant.id, child: Text(label));
-                      }).toList(),
-                      onChanged: (v) => setState(() => selectedPlant = v),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // ── Settings rows ──────────────────────────────────────
-                  _settingsRow(
-                    'Step size',
-                    _dropdownBox(
-                      child: DropdownButton<int>(
-                        isDense: true,
-                        underline: const SizedBox(),
-                        value: _timeGapHours,
-                        items: const [1, 2, 3, 6, 12, 24]
-                            .map((h) => DropdownMenuItem(
-                                value: h, child: Text('${h}h')))
-                            .toList(),
-                        onChanged: (v) =>
-                            setState(() => _timeGapHours = v ?? 1),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _settingsRow(
-                    'Pot size',
-                    _dropdownBox(
-                      child: DropdownButton<double>(
-                        isDense: true,
-                        underline: const SizedBox(),
-                        value: _potSizeL,
-                        items: const [2.0, 5.0, 10.0, 20.0]
-                            .map((l) => DropdownMenuItem(
-                                value: l, child: Text('${l.toInt()} L')))
-                            .toList(),
-                        onChanged: (v) =>
-                            setState(() => _potSizeL = v ?? 5.0),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _settingsRow(
-                    'Daily regime',
-                    Switch(
-                      value: _dailyRegimeEnabled,
-                      onChanged: (v) =>
-                          setState(() => _dailyRegimeEnabled = v),
-                      activeColor: C.green,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _settingsRow(
-                    'Duration (days)',
-                    _dropdownBox(
-                      child: DropdownButton<int>(
-                        isDense: true,
-                        underline: const SizedBox(),
-                        value: _simulationDays,
-                        items: const [7, 14, 30, 60, 90, 180]
-                            .map((d) => DropdownMenuItem(
-                                value: d, child: Text('$d')))
-                            .toList(),
-                        onChanged: (v) =>
-                            setState(() => _simulationDays = v ?? 30),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _settingsRow(
-                    'Mode',
-                    SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(value: 'speed', label: Text('Speed')),
-                        ButtonSegment(
-                            value: 'realtime', label: Text('Realtime')),
                       ],
-                      selected: {_simulationMode},
-                      onSelectionChanged: (v) =>
-                          setState(() => _simulationMode = v.first),
-                      style: const ButtonStyle(
-                        textStyle:
-                            WidgetStatePropertyAll(TextStyle(fontSize: 12)),
-                      ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Buttons ────────────────────────────────────────────
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: 44,
-                          child: OutlinedButton(
-                            onPressed: (_profileSaving || _userProfile == null)
-                                ? null
-                                : _saveUserProfile,
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: C.border),
-                              foregroundColor: C.textPrimary,
-                            ),
-                            child: _profileSaving
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: C.green))
-                                : const Text('Save Settings',
-                                    style: TextStyle(fontSize: 13)),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 2,
-                        child: SizedBox(
-                          height: 44,
-                          child: ElevatedButton(
-                            onPressed: isLoading ? null : _startSimulation,
-                            style: ElevatedButton.styleFrom(
-                                backgroundColor: C.green),
-                            child: isLoading
-                                ? const SizedBox(
-                                    height: 18,
-                                    width: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor:
-                                          AlwaysStoppedAnimation(C.bg),
-                                    ),
-                                  )
-                                : const Text('Start Simulation',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 14)),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  if (error != null) ...[
+                    const SizedBox(height: 20),
+                    const Text('Select a plant to begin:',
+                        style: TextStyle(color: C.textMuted)),
                     const SizedBox(height: 12),
                     Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(
-                        color: C.danger.withValues(alpha: 0.1),
-                        border: Border.all(color: C.danger),
-                        borderRadius: BorderRadius.circular(4),
+                        color: C.panelAlt,
+                        border: Border.all(color: C.border),
+                        borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Text(error!,
-                          style:
-                              const TextStyle(color: C.danger, fontSize: 12)),
+                      child: DropdownButton<String>(
+                        isDense: true,
+                        isExpanded: true,
+                        underline: const SizedBox(),
+                        value: selectedPlant,
+                        items: availablePlants.map((plant) {
+                          final displayName = plant.commonNames.isNotEmpty
+                              ? plant.commonNames.first
+                              : plant.id;
+                          return DropdownMenuItem(
+                              value: plant.id, child: Text(displayName));
+                        }).toList(),
+                        onChanged: (value) =>
+                            setState(() => selectedPlant = value),
+                      ),
                     ),
-                  ],
-
-                  // ── Stats footer ───────────────────────────────────────
-                  if (_userProfile != null) ...[
-                    const SizedBox(height: 16),
-                    const Divider(color: C.border, height: 1),
-                    const SizedBox(height: 10),
-                    Text(
-                      '$totalSims simulation${totalSims == 1 ? '' : 's'} run'
-                      ' · Last: $lastSimStr',
-                      style:
-                          const TextStyle(color: C.textMuted, fontSize: 11),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        onPressed: isLoading ? null : _startSimulation,
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: C.green,
+                            foregroundColor: Colors.white),
+                        child: isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation(Colors.white),
+                                ),
+                              )
+                            : const Text('Simulate',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 17,
+                                    color: Colors.white)),
+                      ),
                     ),
+                    if (error != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: C.danger.withValues(alpha: 0.1),
+                          border: Border.all(color: C.danger),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(error!,
+                            style:
+                                const TextStyle(color: C.danger, fontSize: 14)),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -795,8 +678,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: 300,
+        Expanded(
+          flex: 3,
           child: _scrollCol([
             _buildPlantPanel(),
             _buildCoreStatePanel(),
@@ -804,14 +687,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ]),
         ),
         Expanded(
+          flex: 4,
           child: _scrollCol([
             _buildEnvironmentPanel(),
             _buildHistoryPanel(),
             _buildAgentStatsPanel(),
           ]),
         ),
-        SizedBox(
-          width: 340,
+        Expanded(
+          flex: 3,
           child: _scrollCol([
             _buildStepPanel(),
             _buildActionsPanel(),
@@ -889,7 +773,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 6),
           Text(
             '$_selectedPlantDisplayName · $stageLabel · Day $day',
-            style: const TextStyle(color: C.textMuted, fontSize: 12),
+            style: const TextStyle(color: C.textMuted, fontSize: 17),
           ),
         ],
       ),
@@ -936,11 +820,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('0%',
-                  style: TextStyle(fontSize: 9, color: C.textMuted)),
+                  style: TextStyle(fontSize: 13, color: C.textMuted)),
               Text(
                 '${damage.toStringAsFixed(0)}%',
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
                   color: damage < 30
                       ? C.green
@@ -950,7 +834,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
               const Text('95% ☠',
-                  style: TextStyle(fontSize: 9, color: C.textMuted)),
+                  style: TextStyle(fontSize: 13, color: C.textMuted)),
             ],
           ),
           const SizedBox(height: 10),
@@ -968,19 +852,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Row(
         children: [
           SizedBox(
-            width: 80,
+            width: 100,
             child: Text(label,
-                style: const TextStyle(fontSize: 11, color: C.textMuted)),
+                style: const TextStyle(fontSize: 16, color: C.textMuted)),
           ),
           Expanded(
-              child: BarGauge(value: value * 100, color: color, height: 4)),
+              child: BarGauge(value: value * 100, color: color, height: 6)),
           const SizedBox(width: 6),
           SizedBox(
-            width: 30,
+            width: 44,
             child: Text(
               '${(value * 100).toStringAsFixed(0)}%',
               textAlign: TextAlign.right,
-              style: const TextStyle(fontSize: 10, color: C.textMuted),
+              style: const TextStyle(fontSize: 15, color: C.textMuted),
             ),
           ),
         ],
@@ -999,7 +883,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 4),
           Text(
             stage.label,
-            style: const TextStyle(fontSize: 11, color: C.textMuted),
+            style: const TextStyle(fontSize: 16, color: C.textMuted),
             textAlign: TextAlign.center,
           ),
         ],
@@ -1029,7 +913,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             physics: const NeverScrollableScrollPhysics(),
             mainAxisSpacing: 6,
             crossAxisSpacing: 6,
-            childAspectRatio: 2.6,
+            childAspectRatio: 2.0,
             children: [
               _envTile('Soil Moisture', '${soilWater.toStringAsFixed(1)}%',
                   soilWater < 15 ? C.danger : null),
@@ -1064,12 +948,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(label, style: const TextStyle(color: C.textMuted, fontSize: 10)),
+          Text(label, style: const TextStyle(color: C.textMuted, fontSize: 15)),
           Text(
             value,
             style: TextStyle(
               fontWeight: FontWeight.w700,
-              fontSize: 13,
+              fontSize: 19,
               color: alert ?? C.textPrimary,
             ),
           ),
@@ -1086,7 +970,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: const [
             PanelTitle('History'),
             Text('No history data yet',
-                style: TextStyle(color: C.textMuted, fontSize: 12)),
+                style: TextStyle(color: C.textMuted, fontSize: 14)),
           ],
         ),
       );
@@ -1150,12 +1034,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(label,
-                style: const TextStyle(fontSize: 10, color: C.textMuted)),
+                style: const TextStyle(fontSize: 15, color: C.textMuted)),
             if (data.isNotEmpty)
               Text(
                 data.last.toStringAsFixed(1),
                 style: TextStyle(
-                    fontSize: 10, fontWeight: FontWeight.w700, color: color),
+                    fontSize: 15, fontWeight: FontWeight.w700, color: color),
               ),
           ],
         ),
@@ -1189,7 +1073,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const PanelTitle('Agent Statistics'),
           if (agentStats == null)
             const Text('No agent data',
-                style: TextStyle(color: C.textMuted, fontSize: 12))
+                style: TextStyle(color: C.textMuted, fontSize: 16))
           else
             ...rows.map((e) => Padding(
                   padding: const EdgeInsets.only(bottom: 4),
@@ -1198,10 +1082,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     children: [
                       Text(e.key,
                           style: const TextStyle(
-                              fontSize: 12, color: C.textMuted)),
+                              fontSize: 16, color: C.textMuted)),
                       Text(e.value,
                           style: const TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.w600)),
+                              fontSize: 16, fontWeight: FontWeight.w600)),
                     ],
                   ),
                 )),
@@ -1218,7 +1102,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const PanelTitle('Manual Actions'),
           const Text(
             'Execute actions directly on the backend:',
-            style: TextStyle(color: C.textMuted, fontSize: 11),
+            style: TextStyle(color: C.textMuted, fontSize: 15),
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -1285,7 +1169,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const PanelTitle('Manual Step'),
           const Text(
             'Advance simulation by:',
-            style: TextStyle(color: C.textMuted, fontSize: 11),
+            style: TextStyle(color: C.textMuted, fontSize: 15),
           ),
           const SizedBox(height: 8),
           Wrap(
