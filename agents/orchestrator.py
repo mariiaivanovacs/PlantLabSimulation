@@ -134,12 +134,9 @@ class AgentOrchestrator:
 
     def _attach(self, engine: "SimulationEngine") -> None:
         """Register pre-physics and post-physics hooks on the engine."""
-        # Pre-physics: executor caring regime (runs before environmental calcs)
-        pre_hook = self._pre_physics_hook
-        # pre_hook._pre_physics = True  # type: ignore[attr-defined]
-        engine.register_post_step_hook(pre_hook)
-
-        # Post-physics: monitor + reasoning (runs after checkpoints)
+        # Register hooks on the engine
+        # Both hooks run as post-step hooks; executor caring regime runs first internally
+        engine.register_post_step_hook(self._pre_physics_hook)
         engine.register_post_step_hook(self._post_physics_hook)
 
     def _pre_physics_hook(self, engine: "SimulationEngine") -> None:

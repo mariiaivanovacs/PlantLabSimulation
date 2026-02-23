@@ -1,12 +1,21 @@
 """Application settings"""
 
 import os
+from pathlib import Path
+
+# ── Load .env file at startup ────────────────────────────────────────────────
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent.parent / ".env"  # Go up to project root
+    load_dotenv(env_path, override=False)
+except ImportError:
+    pass  # python-dotenv not installed
 
 # ── Flask settings ──────────────────────────────────────────────────────────
 FLASK_ENV = os.getenv('FLASK_ENV', 'development')
 FLASK_DEBUG = os.getenv('FLASK_DEBUG', 'False') == 'True'
 HOST = os.getenv('HOST', '0.0.0.0')
-PORT = int(os.getenv('PORT', 8080))  # Cloud Run требует 8080
+PORT = int(os.getenv('PORT', 5010))  # Local dev: 5010, Cloud Run: 8080
 
 # Security: SECRET_KEY is required in production
 SECRET_KEY = os.getenv('SECRET_KEY')
@@ -26,8 +35,8 @@ FIREBASE_CREDENTIALS_PATH = os.getenv('FIREBASE_CREDENTIALS_PATH', None)
 def initialize_firebase():
     """
     Инициализирует Firebase с приоритетом безопасности:
-    1. Cloud Run → Application Default Credentials (без файла)
-    2. Локально → JSON-файл (если указан и существует)
+    1. Локально → JSON-файл (если указан и существует)
+    2. Cloud Run → Application Default Credentials (без файла)
     """
     import firebase_admin
     from firebase_admin import credentials
@@ -35,29 +44,41 @@ def initialize_firebase():
     if firebase_admin._apps:
         return  # Уже инициализировано
     
+    # 🥇 Приоритет 1: JSON-файл (для локальной разработки и при наличии)
+    creds_path = FIREBASE_CREDENTIALS_PATH
+    
+    # Resolve relative path to project root if needed
+    if creds_path:
+        creds_file = Path(creds_path)
+        if not creds_file.is_absolute():
+            project_root = Path(__file__).parent.parent
+            creds_file = project_root / creds_path
+        
+        if creds_file.exists():
+            try:
+                cred = credentials.Certificate(str(creds_file))
+                firebase_admin.initialize_app(cred, {'projectId': FIREBASE_PROJECT_ID})
+                print(f"✅ Firebase: JSON-file ({creds_file})")
+                return True
+            except Exception as cert_error:
+                print(f"⚠️ Firebase: Certificate init failed ({cert_error}) — trying ADC")
+    
+    # 🥈 Приоритет 2: ADC (для Cloud Run и gcloud auth)
     try:
-        # 🥇 Приоритет 1: ADC (для Cloud Run и gcloud auth)
         cred = credentials.ApplicationDefault()
         firebase_admin.initialize_app(cred, {'projectId': FIREBASE_PROJECT_ID})
         print(f"✅ Firebase: Application Default Credentials (project: {FIREBASE_PROJECT_ID})")
         return True
-        
     except Exception as adc_error:
-        # 🥈 Приоритет 2: JSON-файл (для локальной разработки)
-        if FIREBASE_CREDENTIALS_PATH and os.path.exists(FIREBASE_CREDENTIALS_PATH):
-            cred = credentials.Certificate(FIREBASE_CREDENTIALS_PATH)
-            firebase_admin.initialize_app(cred, {'projectId': FIREBASE_PROJECT_ID})
-            print(f"✅ Firebase: JSON-файл ({FIREBASE_CREDENTIALS_PATH})")
-            return True
-        else:
-            # ⚠️ Критическая ошибка
-            print(f"❌ Firebase: не найдены учётные данные")
-            print(f"   ADC ошибка: {adc_error}")
-            print(f"   Путь к JSON: {FIREBASE_CREDENTIALS_PATH}")
-            raise Exception(
-                "Firebase credentials not found. "
-                "Set FIREBASE_CREDENTIALS_PATH for local dev or ensure ADC is configured for Cloud Run."
-            )
+        # ⚠️ Critical error
+        print(f"❌ Firebase: credentials not found")
+        print(f"   ADC error: {adc_error}")
+        print(f"   Credentials path: {creds_path}")
+        print(f"   File exists: {creds_file.exists() if creds_path else 'N/A'}")
+        raise Exception(
+            "Firebase credentials not found. "
+            "Set FIREBASE_CREDENTIALS_PATH for local dev or set up gcloud ADC for Cloud Run."
+        )
 
 # ── Logging settings ────────────────────────────────────────────────────────
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')

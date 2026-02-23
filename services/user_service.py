@@ -54,26 +54,41 @@ class UserService:
     def _try_connect(self) -> None:
         try:
             import firebase_admin
-            from firebase_admin import auth, credentials, firestore
+            from firebase_admin import auth, firestore
 
-            project_id = os.getenv('FIREBASE_PROJECT_ID')
-            creds_path = os.getenv('FIREBASE_CREDENTIALS_PATH')
-
+            # Firebase should already be initialized by run.py/settings.py
+            # This just gets the existing instance or initializes if needed
             try:
-                firebase_admin.get_app()
+                app = firebase_admin.get_app()
             except ValueError:
+                # Firebase not yet initialized - try to init with service account
+                from firebase_admin import credentials
+                from pathlib import Path
+                
+                project_id = os.getenv('FIREBASE_PROJECT_ID')
+                creds_path = os.getenv('FIREBASE_CREDENTIALS_PATH')
+                
                 if creds_path:
-                    cred = credentials.Certificate(creds_path)
-                    firebase_admin.initialize_app(cred, {'projectId': project_id})
-                elif project_id:
-                    firebase_admin.initialize_app(options={'projectId': project_id})
+                    creds_file = Path(creds_path)
+                    if not creds_file.is_absolute():
+                        project_root = Path(__file__).parent.parent
+                        creds_file = project_root / creds_path
+                    
+                    if creds_file.exists():
+                        cred = credentials.Certificate(str(creds_file))
+                        app = firebase_admin.initialize_app(cred, {'projectId': project_id})
+                        logger.info('UserService: Initialized Firebase with certificate')
+                    else:
+                        logger.warning('UserService: credentials file not found at %s', creds_file)
+                        return
                 else:
-                    firebase_admin.initialize_app()
+                    app = firebase_admin.initialize_app()
+                    logger.info('UserService: Initialized Firebase with default credentials')
 
-            self._db = firestore.client()
+            self._db = firestore.client(app=app)
             self._auth = auth
             self._connected = True
-            logger.info('UserService: connected to Firebase')
+            logger.info('UserService: connected to Firebase Firestore')
         except ImportError:
             logger.warning('UserService: firebase-admin not installed — using local fallback')
         except Exception as exc:
@@ -142,6 +157,65 @@ class UserService:
         profile = self._local.setdefault(uid, dict(_DEFAULT_SETTINGS))
         profile.update(clean)
         return dict(profile)
+
+    # ── plants CRUD ───────────────────────────────────────────────────────────
+
+    def _plants_col(self, uid: str):
+        if not self._connected:
+            return None
+        return self._db.collection('users').document(uid).collection('plants')
+
+    def get_plants(self, uid: str) -> list:
+        """Return list of plant dicts ordered by created_at ascending."""
+        if not self._connected:
+            return self._local.get(f'{uid}:plants', [])
+        docs = self._plants_col(uid).order_by('created_at').stream()
+        result = []
+        for d in docs:
+            data = d.to_dict()
+            data['id'] = d.id
+            data = self._coerce_timestamps(data)
+            result.append(data)
+        return result
+
+    def add_plant(self, uid: str, name: str, identified_as: str, age_days: int) -> dict:
+        """Create a plant document and return it with its generated id."""
+        now_iso = datetime.now(timezone.utc).isoformat()
+        doc = {
+            'name': name,
+            'identified_as': identified_as,
+            'age_days': age_days,
+            'created_at': now_iso,
+        }
+        if self._connected:
+            ref = self._plants_col(uid).document()
+            ref.set(doc)
+            doc['id'] = ref.id
+        else:
+            import uuid
+            doc['id'] = str(uuid.uuid4())
+            plants = self._local.setdefault(f'{uid}:plants', [])
+            plants.append(dict(doc))
+        return doc
+
+    def get_health_checks(self, uid: str, plant_id: str, limit: int = 20) -> list:
+        """Return health_checks for a plant, newest first."""
+        if not self._connected:
+            return []
+        col = (self._plants_col(uid)
+               .document(plant_id)
+               .collection('health_checks')
+               .order_by('timestamp', direction='DESCENDING')
+               .limit(limit))
+        result = []
+        for d in col.stream():
+            data = d.to_dict()
+            data['id'] = d.id
+            data = self._coerce_timestamps(data)
+            result.append(data)
+        return result
+
+    # ── simulation counter ────────────────────────────────────────────────────
 
     def increment_simulation_count(self, uid: str) -> None:
         """Increment total_simulations_run and set last_simulation_date."""

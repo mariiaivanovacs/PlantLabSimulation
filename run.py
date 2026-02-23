@@ -40,11 +40,13 @@ def run_flask_server(host: str = HOST, port: int = PORT, debug: bool = True):
     from app import create_app
 
     app = create_app()
+    # Display localhost for user access instead of bind address 0.0.0.0
+    display_host = 'localhost' if host == '0.0.0.0' else host
     print(f"\n{'='*60}")
     print("PlantLabSimulation API Server")
     print(f"{'='*60}")
-    print(f"\nWeb UI:    http://{host}:{port}/")
-    print(f"API Info:  http://{host}:{port}/api")
+    print(f"\nWeb UI:    http://{display_host}:{port}/")
+    print(f"API Info:  http://{display_host}:{port}/api")
     print("\nSimulation auto-runs after /start - output appears here.")
     print("\nModes:")
     print("  speed    - Fast simulation (configurable hours per tick)")

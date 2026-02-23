@@ -6,7 +6,7 @@ import 'services/auth_service.dart';
 import 'services/api_client.dart';
 import 'theme.dart';
 import 'screens/auth_screen.dart';
-import 'screens/dashboard.dart';
+import 'screens/mode_selection_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -53,7 +53,7 @@ class _AuthGate extends StatelessWidget {
               return _loadingScaffold();
             }
             ApiClient().setToken(tokenSnap.data);
-            return const DashboardScreen();
+            return const ModeSelectionScreen();
           },
         );
       },

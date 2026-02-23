@@ -355,6 +355,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ── build ────────────────────────────────────────────────────────────────────
 
+  /// Reset to profile view without calling the backend stop endpoint.
+  /// Used when a simulation has already ended (plant died or completed).
+  void _resetToProfileView() {
+    setState(() {
+      simulationState = null;
+      simulationRunning = false;
+      history = [];
+      agentStats = null;
+      error = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -362,7 +374,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           _buildHeader(),
           Expanded(
-            child: simulationRunning && simulationState != null
+            // Keep the running view visible as long as we have state data —
+            // this includes when the plant has died but the simulation is no
+            // longer "running". Profile view is only shown before any
+            // simulation has been started (or after the user resets).
+            child: simulationState != null
                 ? _buildRunningView()
                 : _buildProfileView(),
           ),
@@ -1195,20 +1211,99 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildControlPanel() {
+    final isAlive = _b('is_alive');
+    final deathReason = simulationState?['death_reason'] as String?;
+    // Simulation ended when we have state but it is no longer running
+    final ended = simulationState != null;
+
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const PanelTitle('Simulation Control'),
+
+          // ── Dead-plant banner (only when plant is dead) ────────────────
+          if (ended && !isAlive) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: C.danger.withValues(alpha: 0.08),
+                border: Border.all(color: C.danger.withValues(alpha: 0.4)),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const Text(
+                    '💀 Plant has died',
+                    style: TextStyle(
+                        color: C.danger,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15),
+                  ),
+                  if (deathReason != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      deathReason,
+                      style:
+                          const TextStyle(color: C.textMuted, fontSize: 13),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // ── Completed-normally banner ──────────────────────────────────
+          if (ended && isAlive) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: C.green.withValues(alpha: 0.08),
+                border: Border.all(color: C.green.withValues(alpha: 0.4)),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Text(
+                '✅ Simulation complete',
+                style: TextStyle(
+                    color: C.green,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // ── Primary action button ──────────────────────────────────────
           SizedBox(
             width: double.infinity,
             height: 48,
-            child: ElevatedButton.icon(
-              onPressed: isLoading ? null : _stopSimulation,
-              icon: const Icon(Icons.stop),
-              label: const Text('Stop Simulation'),
-              style: ElevatedButton.styleFrom(backgroundColor: C.danger),
-            ),
+            child: ended
+                // Simulation over: let user start fresh without navigating away
+                ? ElevatedButton.icon(
+                    onPressed: isLoading ? null : _resetToProfileView,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text(
+                      'Start New Simulation',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: C.green,
+                        foregroundColor: Colors.white),
+                  )
+                // Simulation running: allow manual stop
+                : ElevatedButton.icon(
+                    onPressed: isLoading ? null : _stopSimulation,
+                    icon: const Icon(Icons.stop),
+                    label: const Text('Stop Simulation'),
+                    style:
+                        ElevatedButton.styleFrom(backgroundColor: C.danger),
+                  ),
           ),
         ],
       ),

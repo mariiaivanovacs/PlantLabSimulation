@@ -124,10 +124,14 @@ def _run_simulation_loop():
         if hour_of_day == 0 or hour == 1:
             _print_status(_engine.state, day, hour_of_day)
 
+        # Check if plant died — immediately break to avoid delays in sleep loops
+        if not _engine.state.is_alive:
+            break
+
         # Wait based on mode
         if mode == 'realtime':
             for _ in range(60):
-                if not _simulation_running:
+                if not _simulation_running or not _engine.state.is_alive:
                     break
                 time.sleep(60)
         else:
@@ -140,8 +144,9 @@ def _run_simulation_loop():
 
             time.sleep(tick_delay)
 
-    # Simulation ended
-    _simulation_running = False
+    # Simulation ended (loop broke due to plant death or time limit)
+    # Keep _simulation_running = True so frontend keeps displaying the final state
+    # Only set to False when explicitly stopped or new simulation starts
 
     print(f"\n{'='*70}")
     if not _engine.state.is_alive:
@@ -221,7 +226,13 @@ def start_simulation():
     mode = data.get('mode', 'speed')
     hours_per_tick = data.get('hours_per_tick', 1)
     tick_delay = data.get('tick_delay', 0.1)
-    daily_regime = data.get('daily_regime', True)
+    daily_regime_raw = data.get('daily_regime', True)
+    # Normalize to bool — frontend may send the JSON string "false" which is
+    # truthy in Python even though it means OFF.
+    if isinstance(daily_regime_raw, str):
+        daily_regime = daily_regime_raw.strip().lower() not in ('false', '0', 'no', '')
+    else:
+        daily_regime = bool(daily_regime_raw)
     monitor_enabled = data.get('monitor_enabled', True)
 
     # Validate mode

@@ -50,7 +50,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyDUCfGYbXqOKidaEdwUtTPvyeD7H6AWMJg',
-    appId: '1:115544415132:macos:placeholder',
+    appId: '1:115544415132:ios:d7014ee003a95bdd064659',
     messagingSenderId: '115544415132',
     projectId: 'plant-lab-simulation-4e1c5',
     storageBucket: 'plant-lab-simulation-4e1c5.firebasestorage.app',

@@ -596,7 +596,7 @@ class SimulationEngine:
 
     def set_daily_regime(
         self,
-        enabled: str = "True",
+        enabled=True,
         watering_hour: int = 7,
         ventilation_hour: int = 12,
         water_amount: float = 0.3,
@@ -608,7 +608,7 @@ class SimulationEngine:
         Configure the daily automated regime
 
         Args:
-            enabled: Enable/disable daily regime
+            enabled: Enable/disable daily regime (bool, or "True"/"False" string)
             watering_hour: Hour of day to water (0-23)
             ventilation_hour: Hour of day to ventilate (0-23)
             water_amount: Amount of water per day (L)
@@ -616,12 +616,22 @@ class SimulationEngine:
             co2_enrichment: Enable CO2 enrichment during daylight
             co2_target: Target CO2 level in ppm (default 1000)
         """
+        # Normalize enabled to a proper boolean so string "False" / "false" /
+        # "0" from the frontend never sneaks through as truthy.
+        if isinstance(enabled, str):
+            enabled_bool = enabled.strip().lower() not in ("false", "0", "no", "")
+        else:
+            enabled_bool = bool(enabled)
 
-        if enabled == "False":
+        # Always write the flag — never skip with an early return.
+        # Previously the function returned without setting daily_regime_enabled=False
+        # when disabled, so toggling OFF after ON had no effect.
+        self.daily_regime_enabled = enabled_bool
+
+        if not enabled_bool:
             logger.info("Daily regime disabled")
             return
 
-        self.daily_regime_enabled = enabled
         self.watering_hour = watering_hour % 24
         self.ventilation_hour = ventilation_hour % 24
         self.daily_water_amount = water_amount
@@ -629,7 +639,7 @@ class SimulationEngine:
         self.co2_enrichment_enabled = co2_enrichment
         self.co2_target_ppm = co2_target
 
-        logger.info(f"Daily regime {'enabled' if enabled else 'disabled'}: "
+        logger.info(f"Daily regime enabled: "
                    f"water at {watering_hour}:00 ({water_amount}L), "
                    f"ventilate at {ventilation_hour}:00 ({fan_speed}%), "
                    f"CO2 enrichment {'enabled' if co2_enrichment else 'disabled'} (target: {co2_target}ppm)")
@@ -1077,6 +1087,15 @@ class SimulationEngine:
             self.plant_profile.temperature.T_max,
             self.plant_profile.EC_toxicity_threshold
         )
+
+        # Include already-computed stress metrics in damage accumulation.
+        # calculate_damage_rate() only triggers at extreme raw thresholds
+        # (wilting_point, T_min/T_max). The stress values capture sub-threshold
+        # stress (e.g. soil below optimal_min but still above wilting_point+5%)
+        # which calculate_damage_rate() misses entirely.
+        damage_rate += self.state.water_stress * 1.0      # up to 1 %/hr at full water stress
+        damage_rate += self.state.temp_stress * 0.5       # up to 0.5 %/hr at full temp stress
+        damage_rate += self.state.nutrient_stress * 0.5   # up to 0.5 %/hr at full nutrient stress
 
         # Add CO2 stress damage (minor)
         co2_stress = calculate_co2_stress(self.state.CO2)
