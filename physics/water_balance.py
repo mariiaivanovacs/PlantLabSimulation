@@ -258,8 +258,8 @@ def update_soil_water(
     # Water balance equation
     new_soil_water = soil_water + irrigation_percent - ET_percent - drainage
     
-    with open("data/records/soil_water.txt", "a") as f:
-        f.write(f"{soil_water},{new_soil_water},{irrigation_percent},{ET_percent},{drainage}\n")
+    # with open("data/records/soil_water.txt", "a") as f:
+    #     f.write(f"{soil_water},{new_soil_water},{irrigation_percent},{ET_percent},{drainage}\n")
 
     # Handle runoff (water above saturation runs off)
     runoff = 0.0

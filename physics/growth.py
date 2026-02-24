@@ -15,6 +15,7 @@ Day/night cycle:
 - At night: net_carbon is negative → biomass loss
 """
 from typing import Tuple
+from pathlib import Path
 import math
 
 
@@ -234,6 +235,7 @@ def calculate_photosynthesis(
     # --- 6. Gross photosynthesis ---
     P_gross = LUE_effective * PAR_absorbed * f_temp * f_nutrient
 
+    Path('data/records').mkdir(parents=True, exist_ok=True)
     with open('data/records/photosynthesis.txt', 'a') as f:
         f.write(f"{P_gross}, {light_PAR}, {light_interception}, {stress_factor:.3f}\n")
 
@@ -285,6 +287,7 @@ def calculate_respiration(
 
     # Temperature-dependent respiration
     R_maint = r_base * biomass * temp_factor
+    Path('data/records').mkdir(parents=True, exist_ok=True)
     with open('data/records/respiration.txt', 'a') as f:
         f.write(f"{R_maint}, {biomass}, {air_temp}, {temp_factor:.3f}\n")
 
@@ -651,6 +654,7 @@ def update_leaf_area(
         # Shrinking (biomass loss): allow leaf area to decrease
         leaf_area = potential_leaf_area
         
+    Path('data/records').mkdir(parents=True, exist_ok=True)
     with open('data/records/leaf.txt', 'a') as f:
         f.write(f"{biomass},{leaf_area}, {combined_expansion_factor}\n")
 
@@ -819,6 +823,7 @@ def calculate_RGR(
     if stress_factor < 0.2 and biomass < 5: 
         RGR_actual = 0.0015
 
+    Path('data/records').mkdir(parents=True, exist_ok=True)
     with open('data/records/RGR.txt', 'a') as f:
         f.write(f"{hour}, {biomass}, {delta_biomass}, {boost}, {water_stress}, {stress_factor:.3f}, {stress_multiplier:.3f}, {RGR_actual}\n")
 

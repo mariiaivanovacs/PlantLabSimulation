@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme.dart';
 import '../../services/auth_service.dart';
+import '../auth_screen.dart';
 import '../../services/firestore_service.dart';
 import '../../services/gemini_service.dart';
 import '../../models/plant_record.dart';
@@ -349,7 +350,25 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
             ],
             onSelected: (value) async {
               if (value == 'sign_out') {
-                await AuthService.instance.signOut();
+                try {
+                  await AuthService.instance.signOut();
+                  if (mounted) {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                          builder: (_) => const AuthScreen()),
+                      (_) => false,
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error signing out: $e'),
+                        backgroundColor: C.danger,
+                      ),
+                    );
+                  }
+                }
               } else if (value == 'add_plant') {
                 await _addNewPlant();
               } else if (value.startsWith('plant_')) {

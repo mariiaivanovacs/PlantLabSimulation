@@ -11,7 +11,9 @@ import 'diagnostics.dart';
 import 'executor_log.dart';
 import 'monitor_settings.dart';
 import 'metrics_viewer.dart';
+import 'mqtt_settings_screen.dart';
 import '../services/auth_service.dart';
+import 'auth_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -95,7 +97,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
         setState(() {
           simulationRunning = nowRunning;
-          if (hasState) {
+          // Only update simulationState if:
+          // 1. Simulation is currently running, OR
+          // 2. Simulation was running but just ended (keep final state visible)
+          // This prevents repopulating state after user intentionally resets
+          if (hasState && (nowRunning || wasRunning)) {
             simulationState = stateResp.state;
             simulationSummary = stateResp.summary;
             simulationConfig = stateResp.config;
@@ -225,14 +231,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final response = await _api.startSimulation(
         plantName: selectedPlant!,
         mode: 'speed',
-        hoursPerTick: 1,
+        hoursPerTick: _timeGapHours,
+        days: _simulationDays,
         tickDelay: 0.1,
         dailyRegime: _dailyRegimeEnabled,
         monitorEnabled: true,
       );
       if (!mounted) return;
       if (response.success) {
-        setState(() => simulationRunning = true);
+        // Immediately fetch the simulation state to populate the running view
+        final stateResp = await _api.getSimulationState();
+        if (!mounted) return;
+        
+        setState(() {
+          simulationRunning = true;
+          if (stateResp.success && stateResp.state.isNotEmpty) {
+            simulationState = stateResp.state;
+            simulationSummary = stateResp.summary;
+            simulationConfig = stateResp.config;
+          }
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
               content: Text('✅ ${response.message}'), backgroundColor: C.green),
@@ -355,16 +373,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ── build ────────────────────────────────────────────────────────────────────
 
-  /// Reset to profile view without calling the backend stop endpoint.
-  /// Used when a simulation has already ended (plant died or completed).
-  void _resetToProfileView() {
-    setState(() {
-      simulationState = null;
-      simulationRunning = false;
-      history = [];
-      agentStats = null;
-      error = null;
-    });
+  /// Reset to the settings view immediately, then stop the backend in background.
+  Future<void> _resetToProfileView() async {
+    // Show the settings page right away — no need to wait for the stop call.
+    if (mounted) {
+      setState(() {
+        simulationState = null;
+        simulationRunning = false;
+        history = [];
+        agentStats = null;
+        error = null;
+        isLoading = false;
+      });
+    }
+    // Stop backend best-effort (fire-and-forget).
+    try {
+      await _api.stopSimulation();
+    } catch (e) {
+      debugPrint('Error stopping simulation during reset: $e');
+    }
   }
 
   @override
@@ -390,8 +417,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildHeader() {
     final alive = _b('is_alive');
     final damage = _d('cumulative_damage');
-    final hour = _i('hour');
-    final day = hour ~/ 24;
+    final simHour = _i('hour');                      // absolute simulation hours
+    final hoursPerTick =
+        (simulationConfig?['hours_per_tick'] as num?)?.toInt() ?? 1;
+    final tick = hoursPerTick > 1 ? simHour ~/ hoursPerTick : simHour;
+    final day = simHour ~/ 24;
+    // Label: "T" = ticks when hours_per_tick>1 (user-chosen unit), "H" otherwise
+    final tickLabel = hoursPerTick > 1 ? 'T$tick (${hoursPerTick}h)' : 'H$tick';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -427,7 +459,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
-                'Day $day · H$hour',
+                'Day $day · $tickLabel',
                 style:
                     const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
               ),
@@ -456,7 +488,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: C.textMuted, size: 20),
             color: C.panel,
-            onSelected: (value) {
+            onSelected: (value) async {
               switch (value) {
                 case 'metrics':
                   Navigator.push(
@@ -482,8 +514,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       MaterialPageRoute(
                           builder: (_) => const MonitorSettingsScreen()));
                   break;
+                case 'mqtt':
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const MqttSettingsScreen()));
+                  break;
                 case 'signout':
-                  AuthService.instance.signOut();
+                  try {
+                    try { await _api.stopSimulation(); } catch (_) {}
+                    await AuthService.instance.signOut();
+                    if (mounted) {
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(
+                            builder: (_) => const AuthScreen()),
+                        (_) => false,
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error signing out: $e'),
+                          backgroundColor: C.danger,
+                        ),
+                      );
+                    }
+                  }
                   break;
               }
             },
@@ -521,6 +578,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ]),
               ),
               PopupMenuItem(
+                value: 'mqtt',
+                child: Row(children: [
+                  Icon(Icons.cell_tower, color: C.info, size: 18),
+                  SizedBox(width: 8),
+                  Text('MQTT Settings'),
+                ]),
+              ),
+              PopupMenuItem(
                 value: 'signout',
                 child: Row(children: [
                   Icon(Icons.logout, color: C.danger, size: 18),
@@ -537,20 +602,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildProfileView() {
-    final displayName =
-        _userProfile?['display_name'] as String? ?? '';
-    final totalSims =
-        (_userProfile?['total_simulations_run'] as num?)?.toInt() ?? 0;
-    final lastSimRaw = _userProfile?['last_simulation_date'] as String?;
-
-    String lastSimStr = 'Never';
-    if (lastSimRaw != null) {
-      try {
-        final dt = DateTime.parse(lastSimRaw).toLocal();
-        lastSimStr =
-            '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
-      } catch (_) {}
-    }
+    const tickOptions = [1, 2, 3, 6, 12, 24];
+    const dayOptions = [7, 14, 30, 60, 90];
 
     return Center(
       child: SingleChildScrollView(
@@ -559,6 +612,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              // ── Plant & simulation setup ─────────────────────────────────
               Panel(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -575,33 +629,150 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    const Text('Select a plant to begin:',
-                        style: TextStyle(color: C.textMuted)),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: C.panelAlt,
-                        border: Border.all(color: C.border),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
+
+                    // Plant selector
+                    const Text('Plant species',
+                        style: TextStyle(color: C.textMuted, fontSize: 13)),
+                    const SizedBox(height: 6),
+                    _dropdownBox(
                       child: DropdownButton<String>(
                         isDense: true,
                         isExpanded: true,
                         underline: const SizedBox(),
                         value: selectedPlant,
                         items: availablePlants.map((plant) {
-                          final displayName = plant.commonNames.isNotEmpty
+                          final name = plant.commonNames.isNotEmpty
                               ? plant.commonNames.first
                               : plant.id;
                           return DropdownMenuItem(
-                              value: plant.id, child: Text(displayName));
+                              value: plant.id, child: Text(name));
                         }).toList(),
-                        onChanged: (value) =>
-                            setState(() => selectedPlant = value),
+                        onChanged: (v) => setState(() => selectedPlant = v),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Hours per tick + simulation days (side by side)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Hours / tick',
+                                  style: TextStyle(
+                                      color: C.textMuted, fontSize: 13)),
+                              const SizedBox(height: 6),
+                              _dropdownBox(
+                                child: DropdownButton<int>(
+                                  isDense: true,
+                                  isExpanded: true,
+                                  underline: const SizedBox(),
+                                  value: _timeGapHours,
+                                  items: tickOptions.map((h) {
+                                    return DropdownMenuItem(
+                                      value: h,
+                                      child: Text(
+                                        h == 1 ? '1 h (fine)' : '$h h',
+                                      ),
+                                    );
+                                  }).toList(),
+                                  onChanged: (v) =>
+                                      setState(() => _timeGapHours = v ?? 1),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Duration',
+                                  style: TextStyle(
+                                      color: C.textMuted, fontSize: 13)),
+                              const SizedBox(height: 6),
+                              _dropdownBox(
+                                child: DropdownButton<int>(
+                                  isDense: true,
+                                  isExpanded: true,
+                                  underline: const SizedBox(),
+                                  value: dayOptions.contains(_simulationDays)
+                                      ? _simulationDays
+                                      : 30,
+                                  items: dayOptions.map((d) {
+                                    return DropdownMenuItem(
+                                        value: d, child: Text('$d days'));
+                                  }).toList(),
+                                  onChanged: (v) =>
+                                      setState(() => _simulationDays = v ?? 30),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Daily regime toggle
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Daily Regime',
+                                  style: TextStyle(fontSize: 15)),
+                              Text(
+                                'Auto watering, HVAC, CO₂ enrichment',
+                                style: TextStyle(
+                                    color: C.textMuted, fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: _dailyRegimeEnabled,
+                          onChanged: (v) =>
+                              setState(() => _dailyRegimeEnabled = v),
+                          activeThumbColor: C.green,
+                          inactiveThumbColor: C.textDim,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+
+                    // MQTT speed hint
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: C.info.withValues(alpha: 0.07),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                            color: C.info.withValues(alpha: 0.25)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.cell_tower,
+                              color: C.info, size: 15),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'MQTT publisher will step $_timeGapHours sim-hour'
+                              '${_timeGapHours > 1 ? 's' : ''} per publish cycle',
+                              style: const TextStyle(
+                                  color: C.info, fontSize: 12),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 20),
+
+                    // Start button
                     SizedBox(
                       width: double.infinity,
                       height: 48,
@@ -616,14 +787,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 width: 20,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation(Colors.white),
+                                  valueColor: AlwaysStoppedAnimation(
+                                      Colors.white),
                                 ),
                               )
-                            : const Text('Simulate',
-                                style: TextStyle(
+                            : Text(
+                                'Simulate  ($_simulationDays d · ${_timeGapHours}h/tick)',
+                                style: const TextStyle(
                                     fontWeight: FontWeight.w600,
-                                    fontSize: 17,
-                                    color: Colors.white)),
+                                    fontSize: 16,
+                                    color: Colors.white),
+                              ),
                       ),
                     ),
                     if (error != null) ...[
@@ -636,8 +810,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(error!,
-                            style:
-                                const TextStyle(color: C.danger, fontSize: 14)),
+                            style: const TextStyle(
+                                color: C.danger, fontSize: 14)),
                       ),
                     ],
                   ],
@@ -1286,7 +1460,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: ended
                 // Simulation over: let user start fresh without navigating away
                 ? ElevatedButton.icon(
-                    onPressed: isLoading ? null : _resetToProfileView,
+                    onPressed: isLoading ? null : () async => await _resetToProfileView(),
                     icon: const Icon(Icons.refresh),
                     label: const Text(
                       'Start New Simulation',

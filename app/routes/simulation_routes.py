@@ -171,6 +171,13 @@ def _run_simulation_loop():
         print(f"Reasoning log: {log_path}")
     print(f"{'='*70}\n")
 
+    # Signal publisher process to stop (plant died or duration reached)
+    try:
+        from app.routes.mqtt_routes import signal_publisher_stop
+        signal_publisher_stop()
+    except Exception as _exc:
+        logger.debug('Publisher end signal skipped: %s', _exc)
+
     # Flush remaining BigQuery rows and write the run summary
     try:
         bq = BigQueryService.get()
@@ -296,6 +303,14 @@ def start_simulation():
             'started_at': datetime.now(timezone.utc).isoformat(),
         }
 
+        # Keep MQTT publisher in sync with the chosen hours_per_tick
+        try:
+            from config.settings import PORT
+            from app.routes.mqtt_routes import sync_simulation_speed
+            sync_simulation_speed(hours_per_tick, flask_api_url=f'http://localhost:{PORT}')
+        except Exception as _mqtt_exc:
+            logger.debug('MQTT speed sync skipped: %s', _mqtt_exc)
+
         # Register BigQuery per-hour hook on the engine
         try:
             bq = BigQueryService.get()
@@ -348,6 +363,13 @@ def stop_simulation():
 
     if _simulation_thread:
         _simulation_thread.join(timeout=5)
+
+    # Signal publisher process to stop
+    try:
+        from app.routes.mqtt_routes import signal_publisher_stop
+        signal_publisher_stop()
+    except Exception as _exc:
+        logger.debug('Publisher stop signal skipped: %s', _exc)
 
     summary = {}
     log_path = None

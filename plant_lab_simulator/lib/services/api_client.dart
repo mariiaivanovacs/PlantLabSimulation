@@ -153,6 +153,7 @@ class ApiClient {
     required String plantName,
     String mode = 'speed',
     int hoursPerTick = 1,
+    int days = 30,
     double tickDelay = 0.1,
     bool dailyRegime = false,
     bool monitorEnabled = true,
@@ -161,6 +162,7 @@ class ApiClient {
       'plant_name': plantName,
       'mode': mode,
       'hours_per_tick': hoursPerTick,
+      'days': days,
       'tick_delay': tickDelay,
       'daily_regime': dailyRegime,
       'monitor_enabled': monitorEnabled,
@@ -240,6 +242,27 @@ class ApiClient {
       Map<String, dynamic> patch) async {
     final response = await putRequest('/auth/profile', patch);
     return Map<String, dynamic>.from(response['profile'] ?? response);
+  }
+
+  // --- MQTT endpoints ---
+
+  /// GET /mqtt/config
+  Future<Map<String, dynamic>> getMqttConfig() async {
+    final response = await getRequest('/mqtt/config');
+    return Map<String, dynamic>.from(response as Map);
+  }
+
+  /// POST /mqtt/config
+  Future<Map<String, dynamic>> updateMqttConfig(
+      Map<String, dynamic> body) async {
+    final response = await postRequest('/mqtt/config', body);
+    return Map<String, dynamic>.from(response as Map);
+  }
+
+  /// GET /mqtt/latest — most recent MQTT message from Firestore
+  Future<Map<String, dynamic>> getMqttLatest() async {
+    final response = await getRequest('/mqtt/latest');
+    return Map<String, dynamic>.from(response as Map);
   }
 
 }
