@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 
 bp = Blueprint('simulation', __name__)
 
+# Desired real-time seconds per simulated hour (adjust as needed)
+# E.g., 5.0 = want 5 real seconds to simulate 1 hour
+DESIRED_SECONDS_PER_SIM_HOUR = 5.0
+
 
 def _sanitize(obj):
     """Recursively replace inf/nan floats with None so jsonify never breaks."""
@@ -208,13 +212,13 @@ def start_simulation():
         "days": 30,                   # optional, defaults to 30
         "mode": "speed" | "realtime", # optional, defaults to "speed"
         "hours_per_tick": 1,          # optional, for speed mode (default: 1)
-        "tick_delay": 0.1,            # optional, seconds between ticks (default: 0.1)
         "daily_regime": true,         # optional, defaults to true
         "monitor_enabled": true       # optional, defaults to true
     }
 
     Modes:
     - "speed": runs fast with configurable hours_per_tick
+      (tick_delay auto-calculated as hours_per_tick * 5.0 seconds per sim-hour)
     - "realtime": waits 1 real hour between each simulation hour
     """
     global _engine, _orchestrator, _simulation_thread, _simulation_running, _simulation_config
@@ -232,7 +236,13 @@ def start_simulation():
     days = data.get('days', 30)
     mode = data.get('mode', 'speed')
     hours_per_tick = data.get('hours_per_tick', 1)
-    tick_delay = data.get('tick_delay', 0.1)
+    logger.info(f"Hours per tick: {hours_per_tick}")
+    
+    # Calculate tick_delay based on hours_per_tick to maintain consistent pacing
+    # If hours_per_tick=1: tick_delay = 5.0 seconds per 1 sim hour
+    # If hours_per_tick=6: tick_delay = 30.0 seconds per 6 sim hours (5 sec/hour)
+    tick_delay = DESIRED_SECONDS_PER_SIM_HOUR * hours_per_tick
+    logger.info(f"Calculated tick_delay: {tick_delay}s (pacing: {DESIRED_SECONDS_PER_SIM_HOUR}s per sim hour)")
     daily_regime_raw = data.get('daily_regime', True)
     # Normalize to bool — frontend may send the JSON string "false" which is
     # truthy in Python even though it means OFF.

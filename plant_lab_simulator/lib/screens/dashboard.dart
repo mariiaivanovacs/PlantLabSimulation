@@ -513,7 +513,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final tick = hoursPerTick > 1 ? simHour ~/ hoursPerTick : simHour;
     final day = simHour ~/ 24;
     // Label: "T" = ticks when hours_per_tick>1 (user-chosen unit), "H" otherwise
-    final tickLabel = hoursPerTick > 1 ? 'T$tick (${hoursPerTick}h)' : 'H$tick';
+    // final tickLabel = hoursPerTick > 1 ? 'T$tick (${hoursPerTick}h)' : 'H$tick';
+    final tickLabel = 'DEbug info: simHour=$simHour, hoursPerTick=$hoursPerTick, tick=$tick';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

@@ -127,13 +127,16 @@ class ExecutorAgent:
         # ---- 1. HVAC temperature control (every hour) ----
         self._regime_hvac(hour_of_day)
 
-        # ---- 2. Watering (scheduled + proactive + emergency) ----
+        # ---- 2. Lighting (every hour, day/night schedule) ----
+        self._regime_lighting(hour_of_day)
+
+        # ---- 3. Watering (scheduled + proactive + emergency) ----
         self._regime_watering(hour_of_day)
 
-        # ---- 3. Daily ventilation ----
+        # ---- 4. Daily ventilation ----
         self._regime_ventilation(hour_of_day)
 
-        # ---- 4. CO2 enrichment during daylight ----
+        # ---- 5. CO2 enrichment during daylight ----
         self._regime_co2(hour_of_day)
 
     # ------------------------------------------------------------------
@@ -150,6 +153,20 @@ class ExecutorAgent:
                 {"target_temp_C": target_temp, "max_rate_C_per_h": 5.0},
             )
             logger.debug(f"Executor regime - HVAC: {result.message}")
+
+    def _regime_lighting(self, hour_of_day: int) -> None:
+        """Maintain optimal PAR during daylight, off at night (ToolType.LIGHTING)"""
+        is_daytime = 6 <= hour_of_day < 20
+        target_PAR = self.engine.plant_profile.growth.optimal_PAR if is_daytime else 0.0
+        current_PAR = self.engine.state.light_PAR
+        tolerance = max(target_PAR * 0.1, 10.0)  # within 10%
+
+        if abs(current_PAR - target_PAR) > tolerance:
+            result = self.execute_action(
+                ToolType.LIGHTING,
+                {"target_PAR": target_PAR},
+            )
+            logger.debug(f"Executor regime - Lighting: {result.message}")
 
     def _regime_watering(self, hour_of_day: int) -> None:
         """

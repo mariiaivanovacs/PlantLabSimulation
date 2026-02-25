@@ -8,6 +8,8 @@ from flask import Blueprint, jsonify, request
 from services.user_service import UserService, ALLOWED_STEP_SIZES
 
 bp = Blueprint('auth', __name__)
+import logging 
+logger = logging.getLogger(__name__)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -97,8 +99,12 @@ def update_profile():
     uid, err = _get_uid()
     if err:
         return err
+    
+    
 
     patch = request.get_json() or {}
+    
+    logger.info(f"Received profile update request for uid={uid}: {patch}")
     svc = UserService.get()
     try:
         profile = svc.update_profile(uid, patch)

@@ -89,6 +89,12 @@ _FLAG_ACTION_MAP: Dict[str, List[Dict[str, Any]]] = {
     "PAR_LOW_DAYTIME": [
         {"tool_type": "lighting", "parameters": {"target_PAR": None}},
     ],
+    "PAR_LOW_DAYTIME_PERSISTENT": [
+        {"tool_type": "lighting", "parameters": {"target_PAR": None}},
+    ],
+    "PAR_HIGH_DAYTIME": [
+        {"tool_type": "lighting", "parameters": {"target_PAR": None}},
+    ],
 }
 
 

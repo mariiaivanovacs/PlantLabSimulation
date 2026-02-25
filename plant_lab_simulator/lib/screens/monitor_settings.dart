@@ -42,6 +42,7 @@ class _MonitorSettingsScreenState extends State<MonitorSettingsScreen> {
             'warnings': reasoning['warnings'] ?? 0,
             'criticals': reasoning['criticals'] ?? 0,
             'executor_actions': response.statistics['executor_actions'] ?? 0,
+            'gemini_calls': reasoning['gemini_queries'] ?? 0,
           };
         });
       } else {
@@ -252,29 +253,70 @@ class _MonitorSettingsScreenState extends State<MonitorSettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Panel(
-                      accentLeft: C.info,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Executor Actions',
-                            style: TextStyle(
-                              color: C.textMuted,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Panel(
+                            accentLeft: C.info,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Executor Actions',
+                                  style: TextStyle(
+                                    color: C.textMuted,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  '${stats!['executor_actions']} applied',
+                                  style: const TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            '${stats!['executor_actions']} actions applied',
-                            style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w500,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Panel(
+                            accentLeft: C.green,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: const [
+                                    Icon(Icons.auto_awesome,
+                                        size: 14, color: C.green),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'LLM API Calls',
+                                      style: TextStyle(
+                                        color: C.textMuted,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  '${stats!['gemini_calls']} calls',
+                                  style: const TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w500,
+                                    color: C.green,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                   ],

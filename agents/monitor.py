@@ -337,6 +337,32 @@ class MonitorAgent:
         elif state.light_PAR >= par_threshold * 1.5:  # Clear when PAR recovers to 30%
             self.active_alerts.pop(alert_key, None)
 
+        # 3b. PAR > 150% of optimal during daytime for > 2h (photo-inhibition risk)
+        par_high_threshold = th.par_optimal * 1.5
+        high_par_daytime_hours = 0
+        for (_, par), (_, is_day) in zip(reversed(par_data), reversed(daytime_data)):
+            if is_day > 0.5 and par > par_high_threshold:
+                high_par_daytime_hours += 1
+            elif is_day > 0.5:
+                break
+
+        alert_key = "PAR_HIGH"
+        if high_par_daytime_hours > 2:
+            if alert_key not in self.active_alerts:
+                flag = HealthFlag(
+                    flag="PAR_HIGH_DAYTIME",
+                    metric="light_PAR_umol_m2_s",
+                    value=state.light_PAR,
+                    threshold=par_high_threshold,
+                    duration_hours=high_par_daytime_hours,
+                    trigger_type="daytime_duration_exceeded",
+                    severity=Severity.WARNING.value
+                )
+                warnings.append(flag)
+                self.active_alerts[alert_key] = flag
+        elif state.light_PAR <= par_high_threshold * 0.9:
+            self.active_alerts.pop(alert_key, None)
+
         # 4. RGR <= 0 for 48h
         rgr_zero_duration = self.windows["rgr"].get_duration_at_or_below(0)
 

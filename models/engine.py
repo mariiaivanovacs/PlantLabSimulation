@@ -358,6 +358,19 @@ class SimulationEngine:
             )
             result = self.apply_tool(action)
             logger.debug(f"Daily regime - HVAC: {result.message}")
+
+        # Lighting regime: maintain optimal PAR during daylight, off at night
+        is_daytime = 6 <= hour_of_day < 20
+        target_PAR = self.plant_profile.growth.optimal_PAR if is_daytime else 0.0
+        par_tolerance = max(target_PAR * 0.1, 10.0)  # Within 10% (min 10 µmol/m²/s)
+
+        if abs(self.state.light_PAR - target_PAR) > par_tolerance:
+            action = ToolAction(
+                tool_type=ToolType.LIGHTING,
+                parameters={'target_PAR': target_PAR}
+            )
+            result = self.apply_tool(action)
+            logger.debug(f"Daily regime - Lighting: {result.message}")
         
         # implement smooth temp control towards target temp
         # temp_diff = target_temp - self.state.air_temp
