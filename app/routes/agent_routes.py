@@ -2,6 +2,9 @@
 
 from flask import Blueprint, jsonify, request
 from app.routes.simulation_routes import get_orchestrator
+import logging 
+logger = logging.getLogger(__name__)
+
 
 bp = Blueprint('agents', __name__)
 
@@ -53,6 +56,7 @@ def execute():
     if err:
         return err
 
+    logger.info("Execute request arrive")
     data = request.get_json() or {}
     tool_type = data.get('tool_type')
     parameters = data.get('parameters', {})
@@ -63,9 +67,10 @@ def execute():
             'error': 'tool_type is required'
         }), 400
 
-    results = orch.executor_agent.execute_plan([
-        {'tool_type': tool_type, 'parameters': parameters}
-    ])
+    results = orch.executor_agent.execute_plan(
+        [{'tool_type': tool_type, 'parameters': parameters}],
+        source='manual',
+    )
     result = results[0]
 
     return jsonify({

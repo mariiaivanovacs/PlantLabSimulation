@@ -172,6 +172,20 @@ class _ActionLogTileState extends State<_ActionLogTile> {
     }
   }
 
+  Color _sourceColor() =>
+      widget.action.source == 'manual' ? C.info : C.textMuted;
+
+  String _sourceLabel() =>
+      widget.action.source == 'manual' ? 'MANUAL' : 'AGENT';
+
+  String _formatTimestamp(DateTime? ts) {
+    if (ts == null) return '';
+    final h = ts.hour.toString().padLeft(2, '0');
+    final m = ts.minute.toString().padLeft(2, '0');
+    final s = ts.second.toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -179,6 +193,9 @@ class _ActionLogTileState extends State<_ActionLogTile> {
       decoration: BoxDecoration(
         color: C.panelAlt,
         borderRadius: BorderRadius.circular(8),
+        border: widget.action.source == 'manual'
+            ? Border.all(color: C.info.withValues(alpha: 0.35), width: 1)
+            : null,
       ),
       child: Column(
         children: [
@@ -194,12 +211,35 @@ class _ActionLogTileState extends State<_ActionLogTile> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          widget.action.toolType.toUpperCase(),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                          ),
+                        Row(
+                          children: [
+                            Text(
+                              widget.action.toolType.toUpperCase(),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            // Source badge
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: _sourceColor().withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                _sourceLabel(),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: _sourceColor(),
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 2),
                         Text(
@@ -217,6 +257,7 @@ class _ActionLogTileState extends State<_ActionLogTile> {
                     ),
                   ),
                   const SizedBox(width: 8),
+                  // Status badge
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
@@ -236,9 +277,21 @@ class _ActionLogTileState extends State<_ActionLogTile> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    'H${widget.action.hour}',
-                    style: const TextStyle(color: C.textDim, fontSize: 14),
+                  // Sim hour + wall time
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        'H${widget.action.hour}',
+                        style: const TextStyle(color: C.textDim, fontSize: 13),
+                      ),
+                      if (widget.action.timestamp != null)
+                        Text(
+                          _formatTimestamp(widget.action.timestamp),
+                          style: const TextStyle(
+                              color: C.textDim, fontSize: 11),
+                        ),
+                    ],
                   ),
                   const SizedBox(width: 8),
                   Icon(

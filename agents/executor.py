@@ -11,6 +11,7 @@ Tool categories (from docs/tools.md):
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
 from tools.base import ToolAction, ToolResult, ToolType
@@ -54,33 +55,46 @@ class ExecutorAgent:
     # Low-level: execute a single tool action
     # ------------------------------------------------------------------
 
-    def execute_action(self, tool_type: ToolType, parameters: Dict[str, Any]) -> ToolResult:
+    def execute_action(
+        self,
+        tool_type: ToolType,
+        parameters: Dict[str, Any],
+        source: str = "agent",
+    ) -> ToolResult:
         """
         Build a ToolAction, apply it via the engine, and log the result.
 
         Args:
             tool_type: one of ToolType enum values
             parameters: tool-specific parameters dict
+            source: 'manual' (user-initiated) or 'agent' (automated regime/plan)
 
         Returns:
             ToolResult from engine.apply_tool()
         """
         action = ToolAction(tool_type=tool_type, parameters=parameters)
         result = self.engine.apply_tool(action)
-        self._log(tool_type, parameters, result)
+        self._log(tool_type, parameters, result, source=source)
         return result
 
     # ------------------------------------------------------------------
     # Mid-level: execute a list of planned actions
     # ------------------------------------------------------------------
 
-    def execute_plan(self, actions: List[Dict[str, Any]]) -> List[ToolResult]:
+    def execute_plan(
+        self,
+        actions: List[Dict[str, Any]],
+        source: str = "agent",
+    ) -> List[ToolResult]:
         """
         Execute a list of planned actions.
 
         Each element should be a dict with:
           - 'tool_type': str or ToolType  (e.g. 'watering' or ToolType.WATERING)
           - 'parameters': dict of tool parameters
+
+        Args:
+            source: 'manual' (user-initiated) or 'agent' (automated)
 
         Returns:
             List of ToolResults
@@ -90,7 +104,7 @@ class ExecutorAgent:
             tt = action_spec["tool_type"]
             if isinstance(tt, str):
                 tt = ToolType(tt)
-            result = self.execute_action(tt, action_spec.get("parameters", {}))
+            result = self.execute_action(tt, action_spec.get("parameters", {}), source=source)
             results.append(result)
         return results
 
@@ -275,6 +289,7 @@ class ExecutorAgent:
         tool_type: ToolType,
         parameters: Dict[str, Any],
         result: ToolResult,
+        source: str = "agent",
     ) -> None:
         """Append an entry to the execution log."""
         self.execution_log.append(
@@ -284,6 +299,8 @@ class ExecutorAgent:
                 "parameters": parameters,
                 "success": result.success,
                 "message": result.message,
+                "source": source,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
         )
 

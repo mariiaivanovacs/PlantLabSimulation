@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http; // ignore: depend_on_referenced_packages
 
 /// API client for Flask backend.
@@ -143,6 +144,7 @@ class ApiClient {
       'tool_type': toolType,
       'parameters': parameters,
     });
+    debugPrint('Execute response: $response');
     return ExecuteResponse.fromJson(response);
   }
 
@@ -366,13 +368,17 @@ class ExecutorLogResponse {
   }
 }
 
-// Backend returns: { hour, tool_type, parameters, success, message }
+// Backend returns: { hour, tool_type, parameters, success, message, source, timestamp }
 class ExecutorLogItem {
   final int hour;
   final String toolType;
   final bool success;
   final Map<String, dynamic> parameters;
   final String message;
+  /// 'manual' = user-initiated from dashboard, 'agent' = automated regime/plan
+  final String source;
+  /// UTC ISO-8601 wall-clock time when the action was executed
+  final DateTime? timestamp;
 
   ExecutorLogItem({
     required this.hour,
@@ -380,15 +386,20 @@ class ExecutorLogItem {
     required this.success,
     required this.parameters,
     required this.message,
+    this.source = 'agent',
+    this.timestamp,
   });
 
   factory ExecutorLogItem.fromJson(Map<String, dynamic> json) {
+    final tsRaw = json['timestamp'] as String?;
     return ExecutorLogItem(
       hour: json['hour'] ?? 0,
       toolType: json['tool_type'] ?? '',
       success: json['success'] ?? false,
       parameters: Map<String, dynamic>.from(json['parameters'] ?? {}),
       message: json['message'] ?? '',
+      source: json['source'] as String? ?? 'agent',
+      timestamp: tsRaw != null ? DateTime.tryParse(tsRaw)?.toLocal() : null,
     );
   }
 }

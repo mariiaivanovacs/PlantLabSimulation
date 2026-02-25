@@ -327,6 +327,96 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  /// Shows a dialog to collect parameters for [type], then calls [_executeAction].
+  /// Each field is pre-filled with the current simulation state value.
+  Future<void> _promptAndExecute(ActionType type) async {
+    final Map<String, TextEditingController> controllers = {};
+
+    switch (type) {
+      case ActionType.light:
+        controllers['target_PAR'] = TextEditingController(
+            text: _d('light_PAR', 600).toStringAsFixed(0));
+      case ActionType.water:
+        controllers['volume_L'] =
+            TextEditingController(text: '0.2');
+      case ActionType.nutrient:
+        controllers['N_dose_ppm'] = TextEditingController(text: '50');
+        controllers['P_dose_ppm'] = TextEditingController(text: '15');
+        controllers['K_dose_ppm'] = TextEditingController(text: '40');
+      case ActionType.hvac:
+        controllers['target_temp_C'] = TextEditingController(
+            text: _d('air_temp', 25).toStringAsFixed(1));
+      case ActionType.humidity:
+        controllers['target_RH'] = TextEditingController(
+            text: _d('relative_humidity', 65).toStringAsFixed(1));
+      case ActionType.ventilation:
+        controllers['fan_speed'] = TextEditingController(text: '50');
+    }
+
+    final labels = {
+      'target_PAR': 'Target PAR (µmol/m²/s, 0–2000)',
+      'volume_L': 'Volume (L, 0–10)',
+      'N_dose_ppm': 'Nitrogen (ppm)',
+      'P_dose_ppm': 'Phosphorus (ppm)',
+      'K_dose_ppm': 'Potassium (ppm)',
+      'target_temp_C': 'Target temperature (°C)',
+      'target_RH': 'Target humidity (%)',
+      'fan_speed': 'Fan speed (%, 0–100)',
+    };
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: C.panel,
+        title: Text('Configure ${type.name}',
+            style: const TextStyle(color: C.textPrimary)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: controllers.entries.map((e) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: TextField(
+                  controller: e.value,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  style: const TextStyle(color: C.textPrimary),
+                  decoration: InputDecoration(
+                    labelText: labels[e.key] ?? e.key,
+                    labelStyle: const TextStyle(color: C.textMuted),
+                    enabledBorder: const OutlineInputBorder(
+                        borderSide: BorderSide(color: C.border)),
+                    focusedBorder: const OutlineInputBorder(
+                        borderSide: BorderSide(color: C.green)),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child:
+                  const Text('Cancel', style: TextStyle(color: C.textMuted))),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: C.green),
+              child: const Text('Apply')),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final params = controllers.map((k, c) {
+      final raw = c.text.trim();
+      return MapEntry(k, double.tryParse(raw) ?? 0.0);
+    });
+
+    await _executeAction(type, params);
+  }
+
   Future<void> _stepSimulation(int hours) async {
     setState(() => isLoading = true);
     try {
@@ -1303,43 +1393,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 label: '💧 Water',
                 color: C.water.withValues(alpha: 0.3),
                 compact: true,
-                onTap: () =>
-                    _executeAction(ActionType.water, {'volume_L': 0.2}),
+                onTap: () => _promptAndExecute(ActionType.water),
               ),
               AnimButton(
                 label: '💡 Light',
                 color: C.light.withValues(alpha: 0.3),
                 compact: true,
-                onTap: () => _executeAction(
-                    ActionType.light, {'target_PAR': 600, 'power_W': 100}),
+                onTap: () => _promptAndExecute(ActionType.light),
               ),
               AnimButton(
                 label: '🧪 Feed',
                 color: C.nutrient.withValues(alpha: 0.3),
                 compact: true,
-                onTap: () => _executeAction(ActionType.nutrient,
-                    {'N_dose_ppm': 50, 'P_dose_ppm': 15, 'K_dose_ppm': 40}),
+                onTap: () => _promptAndExecute(ActionType.nutrient),
               ),
               AnimButton(
-                label: '🌡️ Cool',
+                label: '🌡️ HVAC',
                 color: C.hvac.withValues(alpha: 0.3),
                 compact: true,
-                onTap: () =>
-                    _executeAction(ActionType.hvac, {'target_temp_C': 25}),
+                onTap: () => _promptAndExecute(ActionType.hvac),
               ),
               AnimButton(
                 label: '💨 Humidity',
                 color: C.humidity.withValues(alpha: 0.3),
                 compact: true,
-                onTap: () =>
-                    _executeAction(ActionType.humidity, {'target_RH': 65}),
+                onTap: () => _promptAndExecute(ActionType.humidity),
               ),
               AnimButton(
                 label: '🌬️ Vent',
                 color: C.vent.withValues(alpha: 0.3),
                 compact: true,
-                onTap: () =>
-                    _executeAction(ActionType.ventilation, {'fan_speed': 50.0}),
+                onTap: () => _promptAndExecute(ActionType.ventilation),
               ),
             ],
           ),
