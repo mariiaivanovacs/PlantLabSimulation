@@ -191,6 +191,34 @@ class ApiClient {
     return PlantsResponse.fromJson(response);
   }
 
+  /// POST /simulation/regime — update daily care regime while running
+  Future<Map<String, dynamic>> setRegime({
+    required bool enabled,
+    required int wateringHour,
+    required int ventilationHour,
+    required double waterAmount,
+    required double fanSpeed,
+    required bool co2Enrichment,
+    required double co2Target,
+    double? targetTemp,
+    double? targetPar,
+    required bool notifyNutrientStress,
+  }) async {
+    final response = await postRequest('/simulation/regime', {
+      'enabled': enabled,
+      'watering_hour': wateringHour,
+      'ventilation_hour': ventilationHour,
+      'water_amount': waterAmount,
+      'fan_speed': fanSpeed,
+      'co2_enrichment': co2Enrichment,
+      'co2_target': co2Target,
+      'target_temp': targetTemp,
+      'target_par': targetPar,
+      'notify_nutrient_stress': notifyNutrientStress,
+    });
+    return Map<String, dynamic>.from(response as Map);
+  }
+
   /// POST /simulation/stop
   Future<SimulationStopResponse> stopSimulation() async {
     final response = await postRequest('/simulation/stop', {});

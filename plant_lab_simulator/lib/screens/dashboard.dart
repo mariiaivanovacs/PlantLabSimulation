@@ -50,6 +50,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   double _potSizeL = 5.0;
   bool _dailyRegimeEnabled = true;
 
+  // Notification bell — nutrient stress alerts
+  final GlobalKey _notifBellKey = GlobalKey();
+  bool _notifyNutrientStress = false;
+
   // ── helpers to read backend state fields safely ─────────────────────────────
 
   double _d(String key, [double fallback = 0.0]) =>
@@ -417,6 +421,241 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await _executeAction(type, params);
   }
 
+  // ── Daily regime dialog ───────────────────────────────────────────────────
+
+  Future<void> _showRegimeDialog() async {
+    // Pre-fill from current config if available
+    final regime = (simulationConfig?['regime'] as Map?)?.cast<String, dynamic>() ?? {};
+    bool enabled = regime['enabled'] as bool? ?? _dailyRegimeEnabled;
+    bool co2On   = regime['co2_enrichment'] as bool? ?? true;
+    bool notifyN = simulationConfig?['notify_nutrient_stress'] as bool? ?? _notifyNutrientStress;
+
+    final cWaterHour  = TextEditingController(text: '${regime['watering_hour'] ?? 7}');
+    final cVentHour   = TextEditingController(text: '${regime['ventilation_hour'] ?? 12}');
+    final cWaterAmt   = TextEditingController(text: '${regime['water_amount'] ?? 0.3}');
+    final cFanSpeed   = TextEditingController(text: '${regime['fan_speed'] ?? 20}');
+    final cCo2Target  = TextEditingController(text: '${regime['co2_target'] ?? 1000}');
+    final cTargetTemp = TextEditingController(
+        text: regime['target_temp'] != null ? '${regime['target_temp']}' : '');
+    final cTargetPar  = TextEditingController(
+        text: regime['target_par'] != null ? '${regime['target_par']}' : '');
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          backgroundColor: C.surface,
+          title: const Text('Daily Regime Settings',
+              style: TextStyle(color: C.textPrimary)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Enable toggle
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Enable regime',
+                        style: TextStyle(color: C.textPrimary)),
+                    Switch(
+                      value: enabled,
+                      onChanged: (v) => setS(() => enabled = v),
+                      activeColor: C.green,
+                    ),
+                  ],
+                ),
+                const Divider(color: C.border, height: 20),
+                _regimeField(cTargetTemp, 'Target air temp (°C, blank = plant profile)'),
+                _regimeField(cTargetPar,  'Target PAR (µmol/m²/s, blank = plant profile)'),
+                _regimeField(cWaterAmt,   'Water per event (L)'),
+                _regimeField(cWaterHour,  'Watering hour (0–23)'),
+                _regimeField(cFanSpeed,   'Fan speed (%, 0–100)'),
+                _regimeField(cVentHour,   'Ventilation hour (0–23)'),
+                _regimeField(cCo2Target,  'CO2 target (ppm)'),
+                // CO2 enrichment toggle
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('CO2 enrichment',
+                        style: TextStyle(color: C.textPrimary)),
+                    Switch(
+                      value: co2On,
+                      onChanged: (v) => setS(() => co2On = v),
+                      activeColor: C.green,
+                    ),
+                  ],
+                ),
+                const Divider(color: C.border, height: 20),
+                // Nutrient stress notification checkbox
+                Row(
+                  children: [
+                    Checkbox(
+                      value: notifyN,
+                      onChanged: (v) => setS(() => notifyN = v ?? false),
+                      activeColor: C.green,
+                    ),
+                    const Expanded(
+                      child: Text('Notify when nutrient stress > 30%',
+                          style: TextStyle(color: C.textPrimary, fontSize: 14)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel', style: TextStyle(color: C.textMuted))),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(backgroundColor: C.green),
+                child: const Text('Apply')),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    double? parseOpt(TextEditingController c) {
+      final t = c.text.trim();
+      return t.isEmpty ? null : double.tryParse(t);
+    }
+
+    try {
+      final res = await _api.setRegime(
+        enabled: enabled,
+        wateringHour: int.tryParse(cWaterHour.text.trim()) ?? 7,
+        ventilationHour: int.tryParse(cVentHour.text.trim()) ?? 12,
+        waterAmount: double.tryParse(cWaterAmt.text.trim()) ?? 0.3,
+        fanSpeed: double.tryParse(cFanSpeed.text.trim()) ?? 20.0,
+        co2Enrichment: co2On,
+        co2Target: double.tryParse(cCo2Target.text.trim()) ?? 1000.0,
+        targetTemp: parseOpt(cTargetTemp),
+        targetPar: parseOpt(cTargetPar),
+        notifyNutrientStress: notifyN,
+      );
+
+      if (!mounted) return;
+      final success = res['success'] as bool? ?? false;
+      if (success) {
+        setState(() {
+          _notifyNutrientStress = notifyN;
+          simulationConfig = res['config'] as Map<String, dynamic>?;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Daily regime updated'),
+          backgroundColor: C.green,
+        ));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(res['error'] ?? 'Failed to update regime'),
+          backgroundColor: C.danger,
+        ));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Error: $e'),
+        backgroundColor: C.danger,
+      ));
+    }
+  }
+
+  /// Compact text field reused in the regime dialog.
+  Widget _regimeField(TextEditingController c, String label) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: TextField(
+          controller: c,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          style: const TextStyle(color: C.textPrimary),
+          decoration: InputDecoration(
+            labelText: label,
+            labelStyle: const TextStyle(color: C.textMuted, fontSize: 13),
+            isDense: true,
+            enabledBorder:
+                const OutlineInputBorder(borderSide: BorderSide(color: C.border)),
+            focusedBorder:
+                const OutlineInputBorder(borderSide: BorderSide(color: C.green)),
+          ),
+        ),
+      );
+
+  // ── Nutrient stress notification popup ───────────────────────────────────
+
+  void _showNutrientNotification() {
+    final RenderBox box =
+        _notifBellKey.currentContext!.findRenderObject() as RenderBox;
+    final Offset offset = box.localToGlobal(Offset.zero);
+    final Size size = box.size;
+
+    final nutrientStress = _d('nutrient_stress');
+    final soilN = _d('soil_N');
+    final soilP = _d('soil_P');
+    final soilK = _d('soil_K');
+
+    showMenu(
+      context: context,
+      color: C.panel,
+      position: RelativeRect.fromLTRB(
+        offset.dx,
+        offset.dy + size.height + 4,
+        offset.dx + size.width,
+        0,
+      ),
+      items: [
+        PopupMenuItem(
+          enabled: false,
+          child: SizedBox(
+            width: 240,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Nutrient Status',
+                    style: TextStyle(
+                        color: C.textPrimary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15)),
+                const SizedBox(height: 8),
+                _nutrientRow(
+                    'Stress level',
+                    '${(nutrientStress * 100).toStringAsFixed(0)}%',
+                    nutrientStress > 0.3 ? C.danger : C.green),
+                _nutrientRow('Nitrogen (N)', '${soilN.toStringAsFixed(0)} ppm', C.textPrimary),
+                _nutrientRow('Phosphorus (P)', '${soilP.toStringAsFixed(0)} ppm', C.textPrimary),
+                _nutrientRow('Potassium (K)', '${soilK.toStringAsFixed(0)} ppm', C.textPrimary),
+                if (nutrientStress > 0.3) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Consider applying fertiliser (🧪 Feed)',
+                    style: TextStyle(color: C.warn, fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _nutrientRow(String label, String value, Color valueColor) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(color: C.textMuted, fontSize: 13)),
+            Text(value,
+                style: TextStyle(
+                    color: valueColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+      );
+
   Future<void> _stepSimulation(int hours) async {
     setState(() => isLoading = true);
     try {
@@ -576,6 +815,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             const SizedBox(width: 8),
           ],
+          // Nutrient notification bell — shown only when simulation running
+          if (simulationRunning && simulationState != null)
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  key: _notifBellKey,
+                  icon: Icon(
+                    Icons.notifications_outlined,
+                    color: (_notifyNutrientStress && _d('nutrient_stress') > 0.3)
+                        ? C.warn
+                        : C.textMuted,
+                    size: 22,
+                  ),
+                  tooltip: 'Nutrient status',
+                  onPressed: _showNutrientNotification,
+                ),
+                if (_notifyNutrientStress && _d('nutrient_stress') > 0.3)
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: C.danger,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: C.textMuted, size: 20),
             color: C.panel,
@@ -1380,7 +1651,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const PanelTitle('Manual Actions'),
+          Row(
+            children: [
+              const Expanded(child: PanelTitle('Manual Actions')),
+              TextButton.icon(
+                onPressed: simulationRunning ? _showRegimeDialog : null,
+                icon: const Icon(Icons.tune, size: 16),
+                label: const Text('Daily Regime'),
+                style: TextButton.styleFrom(foregroundColor: C.green),
+              ),
+            ],
+          ),
           const Text(
             'Execute actions directly on the backend:',
             style: TextStyle(color: C.textMuted, fontSize: 15),

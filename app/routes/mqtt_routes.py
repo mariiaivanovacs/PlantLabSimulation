@@ -49,15 +49,19 @@ _ALLOWED_KEYS = set(_config.keys())
 def sync_simulation_speed(hours_per_tick: int, flask_api_url: str = '') -> None:
     """
     Called by simulation_routes when a new simulation starts.
-    Writes hours_per_step and coordination flags to the MQTT config so the
-    publisher picks them up without restart.
+    Updates the MQTT config so the publisher picks up the new speed.
+    
+    NOTE: The MQTT publisher runs as a separate process. It polls the Flask API
+    (/api/mqtt/config) to stay in sync with simulation speed changes.
     """
+    old_hours = _config.get('hours_per_step', 1)
     _config['hours_per_step'] = int(hours_per_tick)
     _config['simulation_running'] = True
     if flask_api_url:
         _config['flask_api_url'] = flask_api_url
     _persist_env()
-    logger.info(f'MQTT hours_per_step synced to {hours_per_tick}')
+    logger.info(f'MQTT sync: hours_per_step {old_hours} → {hours_per_tick}, '
+                f'simulation_running=True')
 
 
 def signal_publisher_stop() -> None:

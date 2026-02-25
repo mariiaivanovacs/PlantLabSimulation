@@ -12,6 +12,7 @@ class C {
   // Backgrounds
   static const bg = Color(0xFF0F1115);
   static const panel = Color(0xFF151821);
+  static const surface = Color(0xFF151821);
   static const panelAlt = Color(0xFF1A1F2B);
   static const border = Color(0xFF243428);
   static const cardBg = Color(0xFF0D0F12);

@@ -139,6 +139,10 @@ class SimulationEngine:
         self.daily_water_amount: float = 0.3  # Liters per day
         self.daily_ventilation_speed: float = 20.0  # Fan speed 0-100%
 
+        # Optional overrides for regime targets (None = use plant profile defaults)
+        self.regime_target_temp: Optional[float] = None   # °C override
+        self.regime_target_par: Optional[float] = None    # µmol/m²/s override
+
         # CO2 enrichment settings
         self.co2_enrichment_enabled: bool = True
         self.co2_target_ppm: float = 1000.0  # Target CO2 level for enrichment
@@ -344,8 +348,8 @@ class SimulationEngine:
         hour_of_day = self.state.hour % 24
 
         # HVAC temperature control (every hour to maintain optimal temperature)
-        # Target the plant's optimal temperature (T_opt)
-        target_temp = self.plant_profile.temperature.T_opt
+        target_temp = self.regime_target_temp if self.regime_target_temp is not None \
+            else self.plant_profile.temperature.T_opt
         temp_tolerance = 2.0  # Only adjust if more than 2°C away from target
 
         if abs(self.state.air_temp - target_temp) > temp_tolerance:
@@ -359,9 +363,11 @@ class SimulationEngine:
             result = self.apply_tool(action)
             logger.debug(f"Daily regime - HVAC: {result.message}")
 
-        # Lighting regime: maintain optimal PAR during daylight, off at night
+        # Lighting regime: maintain target/optimal PAR during daylight, off at night
         is_daytime = 6 <= hour_of_day < 20
-        target_PAR = self.plant_profile.growth.optimal_PAR if is_daytime else 0.0
+        _par_base = self.regime_target_par if self.regime_target_par is not None \
+            else self.plant_profile.growth.optimal_PAR
+        target_PAR = _par_base if is_daytime else 0.0
         par_tolerance = max(target_PAR * 0.1, 10.0)  # Within 10% (min 10 µmol/m²/s)
 
         if abs(self.state.light_PAR - target_PAR) > par_tolerance:
@@ -615,7 +621,9 @@ class SimulationEngine:
         water_amount: float = 0.3,
         fan_speed: float = 20.0,
         co2_enrichment: bool = True,
-        co2_target: float = 1000.0
+        co2_target: float = 1000.0,
+        target_temp: Optional[float] = None,
+        target_par: Optional[float] = None,
     ) -> None:
         """
         Configure the daily automated regime
@@ -651,6 +659,8 @@ class SimulationEngine:
         self.daily_ventilation_speed = fan_speed
         self.co2_enrichment_enabled = co2_enrichment
         self.co2_target_ppm = co2_target
+        self.regime_target_temp = float(target_temp) if target_temp is not None else None
+        self.regime_target_par = float(target_par) if target_par is not None else None
 
         logger.info(f"Daily regime enabled: "
                    f"water at {watering_hour}:00 ({water_amount}L), "

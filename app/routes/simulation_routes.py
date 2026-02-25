@@ -2,10 +2,13 @@
 
 import sys
 import os
+import json
 import math
+import subprocess
 import threading
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
@@ -48,6 +51,12 @@ _simulation_thread = None
 _simulation_running = False
 _simulation_config = {}
 
+# MQTT integration — publisher runs inside the simulation loop,
+# subscriber is spawned as a subprocess alongside the simulation.
+_mqtt_client = None
+_mqtt_pub_cfg: dict = {}
+_subscriber_proc = None
+
 
 def list_plants():
     """List available plant profiles"""
@@ -74,6 +83,134 @@ def is_running():
     """Check if simulation is running"""
     global _simulation_running
     return _simulation_running
+
+
+def _load_mqtt_cfg() -> dict:
+    """Load MQTT settings from plant-metrics-mqtt/config/.env."""
+    env_path = (
+        Path(__file__).resolve().parent.parent.parent
+        / 'plant-metrics-mqtt' / 'config' / '.env'
+    )
+    raw: dict = {}
+    try:
+        from dotenv import dotenv_values
+        raw = dict(dotenv_values(env_path))
+    except Exception:
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    k, _, v = line.partition('=')
+                    raw[k.strip()] = v.strip()
+    return {
+        'broker_url': raw.get('MQTT_BROKER_URL', 'test.mosquitto.org'),
+        'port': int(raw.get('MQTT_PORT', '1883')),
+        'topic': raw.get('MQTT_TOPIC', 'companyA/GH-A1/environment'),
+        'qos': int(raw.get('MQTT_QOS', '1')),
+        'keepalive': int(raw.get('MQTT_KEEPALIVE', '60')),
+        'payload_fields': raw.get('MQTT_PAYLOAD_FIELDS', '').strip(),
+    }
+
+
+def _start_mqtt_integration():
+    """Start built-in MQTT publisher client and auto-spawn subscriber subprocess."""
+    global _mqtt_client, _mqtt_pub_cfg, _subscriber_proc
+
+    _mqtt_pub_cfg = _load_mqtt_cfg()
+
+    # ── Publisher (paho client, publishes from inside the simulation loop) ───
+    try:
+        import paho.mqtt.client as mqtt
+        _mqtt_client = mqtt.Client(client_id='plant-sim-publisher')
+
+        def _on_connect(c, ud, flags, rc):
+            if rc == 0:
+                logger.info(
+                    f'[MQTT] Publisher connected → '
+                    f'{_mqtt_pub_cfg["broker_url"]}:{_mqtt_pub_cfg["port"]}'
+                )
+            else:
+                logger.warning(f'[MQTT] Publisher connection failed (rc={rc})')
+
+        _mqtt_client.on_connect = _on_connect
+        _mqtt_client.connect(
+            _mqtt_pub_cfg['broker_url'],
+            _mqtt_pub_cfg['port'],
+            _mqtt_pub_cfg['keepalive'],
+        )
+        _mqtt_client.loop_start()
+        logger.info(f'[MQTT] Publisher ready → topic={_mqtt_pub_cfg["topic"]}')
+    except ImportError:
+        logger.info(
+            '[MQTT] paho-mqtt not installed — publishing disabled. '
+            'Run: pip install paho-mqtt'
+        )
+        _mqtt_client = None
+    except Exception as exc:
+        logger.warning(f'[MQTT] Publisher init failed: {exc}')
+        _mqtt_client = None
+
+    # ── Subscriber subprocess ────────────────────────────────────────────────
+    try:
+        sub_script = (
+            Path(__file__).resolve().parent.parent.parent
+            / 'plant-metrics-mqtt' / 'subscriber' / 'mqtt_subscriber.py'
+        )
+        if sub_script.exists():
+            _subscriber_proc = subprocess.Popen(
+                [sys.executable, str(sub_script)],
+                cwd=str(sub_script.parent.parent),
+            )
+            logger.info(f'[MQTT] Subscriber started (pid={_subscriber_proc.pid})')
+        else:
+            logger.warning(f'[MQTT] Subscriber script not found: {sub_script}')
+            _subscriber_proc = None
+    except Exception as exc:
+        logger.warning(f'[MQTT] Subscriber subprocess failed: {exc}')
+        _subscriber_proc = None
+
+
+def _stop_mqtt_integration():
+    """Stop MQTT publisher client and subscriber subprocess."""
+    global _mqtt_client, _subscriber_proc
+
+    if _mqtt_client:
+        try:
+            _mqtt_client.loop_stop()
+            _mqtt_client.disconnect()
+            logger.info('[MQTT] Publisher disconnected')
+        except Exception as exc:
+            logger.debug(f'[MQTT] Publisher disconnect error: {exc}')
+        _mqtt_client = None
+
+    if _subscriber_proc:
+        try:
+            _subscriber_proc.terminate()
+            _subscriber_proc.wait(timeout=5)
+            logger.info(f'[MQTT] Subscriber stopped (pid={_subscriber_proc.pid})')
+        except Exception as exc:
+            logger.debug(f'[MQTT] Subscriber stop error: {exc}')
+        _subscriber_proc = None
+
+
+def _publish_mqtt_state(state_dict: dict):
+    """Publish one hourly state snapshot to MQTT (non-blocking, best-effort)."""
+    if not _mqtt_client:
+        return
+    try:
+        fields_csv = _mqtt_pub_cfg.get('payload_fields', '')
+        if fields_csv:
+            fields = [f.strip() for f in fields_csv.split(',') if f.strip()]
+            payload = {k: state_dict[k] for k in fields if k in state_dict}
+        else:
+            payload = dict(state_dict)
+        _mqtt_client.publish(
+            _mqtt_pub_cfg['topic'],
+            json.dumps(payload, default=str),
+            qos=_mqtt_pub_cfg.get('qos', 1),
+        )
+    except Exception as exc:
+        logger.debug(f'[MQTT] Publish error: {exc}')
 
 
 def _print_status(state, day, hour_of_day):
@@ -103,29 +240,40 @@ def _run_simulation_loop():
     print(f"\n{'='*70}")
     print(f"SIMULATION STARTED - {plant_name.upper()}")
     print(f"{'='*70}")
-    print(f"Mode: {'REALTIME (1 tick = 1 real hour)' if mode == 'realtime' else f'SPEED ({hours_per_tick} sim hours per tick)'}")
+    print(f"Mode: {'REALTIME (1 tick = {hours_per_tick} real hours)' if mode == 'realtime' else f'SPEED ({hours_per_tick} sim hours per tick)'}")
     print(f"Duration: {days} days ({total_hours} hours)")
+    print(f"hours_per_tick={hours_per_tick}, tick_delay={tick_delay}s")
     print(f"{'='*70}\n")
 
     current_time = datetime.now()
     file_name = f'data/records/logs_{current_time.strftime("%d%H%M")}.txt'
 
-
     hour = 0
+    tick_count = 0
+
     while _simulation_running and hour < total_hours and _engine.state.is_alive:
-        # Run simulation step (hooks fire automatically)
-        _engine.step(hours=1)
+        tick_count += 1
+        tick_start_hour = hour
+        
+        # Step all hours for this tick at once; publish every individual hour to MQTT
+        for _ in range(hours_per_tick):
+            if not _simulation_running or not _engine.state.is_alive:
+                break
+            _engine.step(hours=1)
+            hour += 1
+            _publish_mqtt_state(_engine.state.to_dict())
+
+        # Display metrics once per complete tick
         display_metrics(_engine, hours_per_tick, show_tools=False, file_name=file_name)
 
-
-        hour += 1
-
-        # Calculate day and hour of day
+        # Log tick progress
         day = hour // 24
         hour_of_day = hour % 24
+        logger.info(f'[TICK {tick_count}] Stepped {hours_per_tick:2d}h → Total: {hour:4d}/{total_hours} hours '
+                    f'(day {day:2d}, {hour_of_day:02d}:00)')
 
-        # Print status once per simulated day (at midnight) to reduce terminal noise
-        if hour_of_day == 0 or hour == 1:
+        # Print status once per simulated day or on first tick
+        if hour_of_day == 0 or tick_count == 1:
             _print_status(_engine.state, day, hour_of_day)
 
         # Check if plant died — immediately break to avoid delays in sleep loops
@@ -134,18 +282,13 @@ def _run_simulation_loop():
 
         # Wait based on mode
         if mode == 'realtime':
-            for _ in range(60):
+            # Each simulated hour = 1 real hour
+            for _ in range(hours_per_tick * 60):
                 if not _simulation_running or not _engine.state.is_alive:
                     break
                 time.sleep(60)
         else:
-            if hours_per_tick > 1:
-                for _ in range(hours_per_tick - 1):
-                    if not _simulation_running or not _engine.state.is_alive:
-                        break
-                    _engine.step(hours=1)
-                    hour += 1
-
+            # Speed mode: configurable delay
             time.sleep(tick_delay)
 
     # Simulation ended (loop broke due to plant death or time limit)
@@ -175,12 +318,8 @@ def _run_simulation_loop():
         print(f"Reasoning log: {log_path}")
     print(f"{'='*70}\n")
 
-    # Signal publisher process to stop (plant died or duration reached)
-    try:
-        from app.routes.mqtt_routes import signal_publisher_stop
-        signal_publisher_stop()
-    except Exception as _exc:
-        logger.debug('Publisher end signal skipped: %s', _exc)
+    # Stop MQTT integration when simulation ends naturally
+    _stop_mqtt_integration()
 
     # Flush remaining BigQuery rows and write the run summary
     try:
@@ -238,11 +377,12 @@ def start_simulation():
     hours_per_tick = data.get('hours_per_tick', 1)
     logger.info(f"Hours per tick: {hours_per_tick}")
     
-    # Calculate tick_delay based on hours_per_tick to maintain consistent pacing
-    # If hours_per_tick=1: tick_delay = 5.0 seconds per 1 sim hour
-    # If hours_per_tick=6: tick_delay = 30.0 seconds per 6 sim hours (5 sec/hour)
-    tick_delay = DESIRED_SECONDS_PER_SIM_HOUR * hours_per_tick
-    logger.info(f"Calculated tick_delay: {tick_delay}s (pacing: {DESIRED_SECONDS_PER_SIM_HOUR}s per sim hour)")
+    # tick_delay is fixed — hours_per_tick controls simulation speed by stepping more
+    # hours per tick, not by stretching the delay.
+    # 1h/tick  → 5s delay, simulates  1h → 5s per sim-hour
+    # 24h/tick → 5s delay, simulates 24h → 0.2s per sim-hour (24× faster)
+    tick_delay = DESIRED_SECONDS_PER_SIM_HOUR
+    logger.info(f"tick_delay={tick_delay}s (fixed), hours_per_tick={hours_per_tick}")
     daily_regime_raw = data.get('daily_regime', True)
     # Normalize to bool — frontend may send the JSON string "false" which is
     # truthy in Python even though it means OFF.
@@ -313,13 +453,8 @@ def start_simulation():
             'started_at': datetime.now(timezone.utc).isoformat(),
         }
 
-        # Keep MQTT publisher in sync with the chosen hours_per_tick
-        try:
-            from config.settings import PORT
-            from app.routes.mqtt_routes import sync_simulation_speed
-            sync_simulation_speed(hours_per_tick, flask_api_url=f'http://localhost:{PORT}')
-        except Exception as _mqtt_exc:
-            logger.debug('MQTT speed sync skipped: %s', _mqtt_exc)
+        # Start MQTT publisher (built-in) and subscriber (subprocess)
+        _start_mqtt_integration()
 
         # Register BigQuery per-hour hook on the engine
         try:
@@ -374,12 +509,8 @@ def stop_simulation():
     if _simulation_thread:
         _simulation_thread.join(timeout=5)
 
-    # Signal publisher process to stop
-    try:
-        from app.routes.mqtt_routes import signal_publisher_stop
-        signal_publisher_stop()
-    except Exception as _exc:
-        logger.debug('Publisher stop signal skipped: %s', _exc)
+    # Stop MQTT publisher and subscriber
+    _stop_mqtt_integration()
 
     summary = {}
     log_path = None
@@ -599,6 +730,79 @@ def get_metrics():
             result['files'][key] = []
 
     return jsonify(_sanitize(result))
+
+
+@bp.route('/regime', methods=['POST'])
+def set_regime():
+    """Update the daily care regime while the simulation is running.
+
+    Body (JSON):
+        enabled              : bool   — turn regime on/off
+        watering_hour        : int    — hour of day to water (0-23)
+        ventilation_hour     : int    — hour of day to ventilate (0-23)
+        water_amount         : float  — liters per watering event
+        fan_speed            : float  — ventilation fan speed (0-100%)
+        co2_enrichment       : bool
+        co2_target           : float  — ppm
+        target_temp          : float|null — °C override (null = use profile)
+        target_par           : float|null — µmol/m²/s override (null = use profile)
+        notify_nutrient_stress: bool  — emit alert when nutrient_stress > 0.3
+    """
+    engine = get_engine()
+    if engine is None:
+        return jsonify({'success': False, 'error': 'No simulation running.'}), 400
+
+    data = request.get_json() or {}
+
+    enabled           = data.get('enabled', True)
+    watering_hour     = int(data.get('watering_hour', 7))
+    ventilation_hour  = int(data.get('ventilation_hour', 12))
+    water_amount      = float(data.get('water_amount', 0.3))
+    fan_speed         = float(data.get('fan_speed', 20.0))
+    co2_enrichment    = bool(data.get('co2_enrichment', True))
+    co2_target        = float(data.get('co2_target', 1000.0))
+    target_temp       = data.get('target_temp')   # None is allowed
+    target_par        = data.get('target_par')    # None is allowed
+    notify_nutrient   = bool(data.get('notify_nutrient_stress', False))
+
+    engine.set_daily_regime(
+        enabled=enabled,
+        watering_hour=watering_hour,
+        ventilation_hour=ventilation_hour,
+        water_amount=water_amount,
+        fan_speed=fan_speed,
+        co2_enrichment=co2_enrichment,
+        co2_target=co2_target,
+        target_temp=float(target_temp) if target_temp is not None else None,
+        target_par=float(target_par) if target_par is not None else None,
+    )
+
+    # Persist notify flag and updated regime settings in shared config
+    _simulation_config['notify_nutrient_stress'] = notify_nutrient
+    _simulation_config['regime'] = {
+        'enabled': engine.daily_regime_enabled,
+        'watering_hour': engine.watering_hour,
+        'ventilation_hour': engine.ventilation_hour,
+        'water_amount': engine.daily_water_amount,
+        'fan_speed': engine.daily_ventilation_speed,
+        'co2_enrichment': engine.co2_enrichment_enabled,
+        'co2_target': engine.co2_target_ppm,
+        'target_temp': engine.regime_target_temp,
+        'target_par': engine.regime_target_par,
+    }
+
+    # Sync executor agent if orchestrator is attached
+    orchestrator = get_orchestrator()
+    if orchestrator is not None:
+        orchestrator.sync_regime_config(engine)
+
+    logger.info(f"Regime updated via API: {_simulation_config['regime']}")
+
+    return jsonify({
+        'success': True,
+        'message': 'Daily regime updated',
+        'config': _simulation_config,
+    })
 
 
 @bp.route('/monitor/alerts', methods=['GET'])

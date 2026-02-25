@@ -144,8 +144,9 @@ class ExecutorAgent:
     # ------------------------------------------------------------------
 
     def _regime_hvac(self, _hour_of_day: int) -> None:
-        """HVAC: maintain optimal temperature (ToolType.HVAC)"""
-        target_temp = self.engine.plant_profile.temperature.T_opt
+        """HVAC: maintain target/optimal temperature (ToolType.HVAC)"""
+        target_temp = self.engine.regime_target_temp if self.engine.regime_target_temp is not None \
+            else self.engine.plant_profile.temperature.T_opt
 
         if abs(self.engine.state.air_temp - target_temp) > self.temp_tolerance:
             result = self.execute_action(
@@ -155,9 +156,11 @@ class ExecutorAgent:
             logger.debug(f"Executor regime - HVAC: {result.message}")
 
     def _regime_lighting(self, hour_of_day: int) -> None:
-        """Maintain optimal PAR during daylight, off at night (ToolType.LIGHTING)"""
+        """Maintain target/optimal PAR during daylight, off at night (ToolType.LIGHTING)"""
         is_daytime = 6 <= hour_of_day < 20
-        target_PAR = self.engine.plant_profile.growth.optimal_PAR if is_daytime else 0.0
+        _par_base = self.engine.regime_target_par if self.engine.regime_target_par is not None \
+            else self.engine.plant_profile.growth.optimal_PAR
+        target_PAR = _par_base if is_daytime else 0.0
         current_PAR = self.engine.state.light_PAR
         tolerance = max(target_PAR * 0.1, 10.0)  # within 10%
 
