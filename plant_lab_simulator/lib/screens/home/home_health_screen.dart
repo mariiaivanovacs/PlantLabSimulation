@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme.dart';
 import '../../services/auth_service.dart';
+import '../../services/api_client.dart';
 import '../auth_screen.dart';
 import '../../services/firestore_service.dart';
 import '../../services/gemini_service.dart';
@@ -14,16 +15,9 @@ import '../../models/plant_record.dart';
 import '../../models/health_check.dart';
 import 'plant_onboarding_screen.dart';
 
-/// Main Home Plant screen.
-///
-/// Shows:
-///  - Top-right avatar with plant switcher pop-up menu
-///  - Optional last-watering selector
-///  - Image upload zone + "Check Health" button
-///  - Latest health result (stress bars + visual scores + summary + action chips)
-///  - Scrollable history of previous checks
+const int _kFreePlanLimit = 3;
+
 class HomeHealthScreen extends StatefulWidget {
-  /// Pre-selected plant, or null to auto-load the first plant.
   final PlantRecord? initialPlant;
 
   const HomeHealthScreen({super.key, this.initialPlant});
@@ -33,17 +27,16 @@ class HomeHealthScreen extends StatefulWidget {
 }
 
 class _HomeHealthScreenState extends State<HomeHealthScreen> {
-  // ── Plant list & selection ───────────────────────────────────────────────────
+  // ── Plant list & selection ────────────────────────────────────────────────────
   List<PlantRecord> _plants = [];
   PlantRecord? _current;
   bool _loadingPlants = true;
 
-  // ── Image upload ─────────────────────────────────────────────────────────────
+  // ── Image upload ──────────────────────────────────────────────────────────────
   Uint8List? _imageBytes;
   String? _imageB64;
 
   // ── Optional env hints ────────────────────────────────────────────────────────
-  // null = not provided; 0 = today, 1 = yesterday, etc.
   int? _lastWateringDays;
 
   // ── Health check state ────────────────────────────────────────────────────────
@@ -51,9 +44,15 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
   String? _checkError;
   HealthCheck? _latestResult;
 
-  // ── History ──────────────────────────────────────────────────────────────────
+  // ── History ───────────────────────────────────────────────────────────────────
   List<HealthCheck> _history = [];
   bool _loadingHistory = false;
+
+  // ── Subscription ──────────────────────────────────────────────────────────────
+  bool _isPro = false;
+  bool _upgradingToPro = false;
+
+  bool get _atPlantLimit => !_isPro && _plants.length >= _kFreePlanLimit;
 
   @override
   void initState() {
@@ -62,6 +61,13 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
   }
 
   Future<void> _init() async {
+    final uri = Uri.parse(html.window.location.href);
+    if (uri.queryParameters['subscription'] == 'success') {
+      html.window.history.replaceState(null, '', '/');
+    }
+
+    _loadSubscriptionStatus();
+
     if (widget.initialPlant != null) {
       setState(() {
         _plants = [widget.initialPlant!];
@@ -72,6 +78,28 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
       _loadHistory();
     } else {
       await _loadAllPlants();
+    }
+  }
+
+  Future<void> _loadSubscriptionStatus() async {
+    try {
+      final status = await ApiClient().getSubscriptionStatus();
+      if (!mounted) return;
+      setState(() => _isPro = status['plan'] == 'pro');
+    } catch (_) {}
+  }
+
+  Future<void> _upgradeToPro() async {
+    setState(() => _upgradingToPro = true);
+    try {
+      final url = await ApiClient().createCheckoutSession();
+      html.window.location.href = url;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not start checkout: $e'), backgroundColor: C.danger),
+      );
+      setState(() => _upgradingToPro = false);
     }
   }
 
@@ -105,7 +133,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
     }
   }
 
-  // ── Image pick ───────────────────────────────────────────────────────────────
+  // ── Image pick ────────────────────────────────────────────────────────────────
 
   Future<void> _pickImage() async {
     final input = html.FileUploadInputElement()
@@ -129,7 +157,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
     });
   }
 
-  // ── Health check ─────────────────────────────────────────────────────────────
+  // ── Health check ──────────────────────────────────────────────────────────────
 
   Future<void> _checkHealth() async {
     final plant = _current;
@@ -146,8 +174,6 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
     });
 
     try {
-      // Backend pipeline: Gemini visual analysis → XGBoost → recommendations
-      // → Firestore persistence (server-side).  Returns enriched HealthCheck.
       final result = await GeminiService.instance.checkHealth(
         imageB64: _imageB64!,
         plantType: plant.identifiedAs,
@@ -173,7 +199,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
     }
   }
 
-  // ── Plant switch ─────────────────────────────────────────────────────────────
+  // ── Plant management ──────────────────────────────────────────────────────────
 
   void _switchPlant(PlantRecord plant) {
     setState(() {
@@ -189,16 +215,80 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
   }
 
   Future<void> _addNewPlant() async {
+    if (_atPlantLimit) {
+      _showPlantLimitDialog();
+      return;
+    }
     final result = await Navigator.push<PlantRecord>(
       context,
-      MaterialPageRoute(
-        builder: (_) => const PlantOnboardingScreen(isFirstPlant: false),
-      ),
+      MaterialPageRoute(builder: (_) => const PlantOnboardingScreen(isFirstPlant: false)),
     );
     if (result != null && mounted) {
       setState(() => _plants = [..._plants, result]);
       _switchPlant(result);
     }
+  }
+
+  void _showPlantLimitDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: C.panel,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Row(
+          children: [
+            Icon(Icons.workspace_premium, color: C.warn, size: 22),
+            SizedBox(width: 10),
+            Text('Plant limit reached',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          ],
+        ),
+        content: Text(
+          'Free plan supports up to $_kFreePlanLimit plants.\n'
+          'Upgrade to Pro for unlimited plants and advanced AI analysis.',
+          style: const TextStyle(color: C.textMuted, fontSize: 14, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Maybe later', style: TextStyle(color: C.textMuted)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _upgradeToPro();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: C.green,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Upgrade to Pro',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Health score helpers ──────────────────────────────────────────────────────
+
+  int _healthScore(HealthCheck check) {
+    final avg = (check.waterStress + check.nutrientStress + check.temperatureStress) / 3.0;
+    return ((1.0 - avg.clamp(0.0, 1.0)) * 100).round();
+  }
+
+  String _healthLabel(int score) {
+    if (score >= 80) return 'Thriving';
+    if (score >= 60) return 'Good';
+    if (score >= 40) return 'Needs care';
+    return 'Struggling';
+  }
+
+  Color _healthColor(int score) {
+    if (score >= 80) return C.green;
+    if (score >= 60) return const Color(0xFF8BC34A);
+    if (score >= 40) return C.warn;
+    return C.danger;
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────────
@@ -231,35 +321,44 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
     return Scaffold(
       backgroundColor: C.bg,
       appBar: _buildAppBar(),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 600),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildPlantHeader(),
-                const SizedBox(height: 24),
-                _buildLastWateringSelector(),
-                const SizedBox(height: 16),
-                _buildUploadZone(),
-                if (_checkError != null) ...[
-                  const SizedBox(height: 12),
-                  _errorBox(_checkError!),
-                ],
-                const SizedBox(height: 16),
-                _buildCheckButton(),
-                if (_latestResult != null) ...[
-                  const SizedBox(height: 28),
-                  _buildResultCard(_latestResult!, isLatest: true),
-                ],
-                const SizedBox(height: 32),
-                _buildHistorySection(),
-              ],
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final hPad = constraints.maxWidth < 600 ? 16.0 : 24.0;
+          return Center(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(horizontal: hPad, vertical: 20),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 680),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildPlantHeader(),
+                    const SizedBox(height: 20),
+                    _buildLastWateringSelector(),
+                    const SizedBox(height: 16),
+                    _buildUploadZone(),
+                    if (_checkError != null) ...[
+                      const SizedBox(height: 10),
+                      _errorBox(_checkError!),
+                    ],
+                    const SizedBox(height: 14),
+                    _buildAnalyseButton(),
+                    if (!_isPro) ...[
+                      const SizedBox(height: 16),
+                      _buildUpgradeBanner(),
+                    ],
+                    if (_latestResult != null) ...[
+                      const SizedBox(height: 28),
+                      _buildResultCard(_latestResult!, isLatest: true),
+                    ],
+                    const SizedBox(height: 32),
+                    _buildHistorySection(),
+                  ],
+                ),
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -271,38 +370,70 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
     return AppBar(
       backgroundColor: C.bg,
       elevation: 0,
-      title: const Text(
-        'Home Plant',
-        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+      title: const Row(
+        children: [
+          Text('🌿', style: TextStyle(fontSize: 18)),
+          SizedBox(width: 8),
+          Text('My Garden',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        ],
       ),
       actions: [
+        if (!_isPro)
+          GestureDetector(
+            onTap: _upgradingToPro ? null : _upgradeToPro,
+            child: Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: C.warn.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: C.warn.withValues(alpha: 0.4)),
+              ),
+              child: const Text(
+                'FREE',
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: C.warn,
+                    letterSpacing: 0.8),
+              ),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.only(right: 12),
           child: PopupMenuButton<String>(
             offset: const Offset(0, 48),
             color: C.panel,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             tooltip: 'Switch plant',
             child: CircleAvatar(
               radius: 18,
               backgroundColor: C.green.withValues(alpha: 0.15),
-              child: Text(
-                plant.emoji,
-                style: const TextStyle(fontSize: 17),
-              ),
+              child: Text(plant.emoji, style: const TextStyle(fontSize: 17)),
             ),
             itemBuilder: (_) => [
               PopupMenuItem<String>(
                 enabled: false,
                 height: 36,
-                child: Text(
-                  'Your plants',
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: C.textMuted,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.8),
+                child: Row(
+                  children: [
+                    const Text(
+                      'My plants',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: C.textMuted,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.8),
+                    ),
+                    const Spacer(),
+                    Text(
+                      _isPro
+                          ? '${_plants.length}'
+                          : '${_plants.length} / $_kFreePlanLimit',
+                      style: const TextStyle(fontSize: 11, color: C.textDim),
+                    ),
+                  ],
                 ),
               ),
               ..._plants.map(
@@ -313,14 +444,16 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
                       Text(p.emoji, style: const TextStyle(fontSize: 16)),
                       const SizedBox(width: 10),
                       Expanded(
-                          child: Text(p.name,
-                              style: TextStyle(
-                                  color: p.id == _current!.id
-                                      ? C.green
-                                      : C.textPrimary,
-                                  fontWeight: p.id == _current!.id
-                                      ? FontWeight.w600
-                                      : FontWeight.normal))),
+                        child: Text(
+                          p.name,
+                          style: TextStyle(
+                            color: p.id == _current!.id ? C.green : C.textPrimary,
+                            fontWeight: p.id == _current!.id
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                          ),
+                        ),
+                      ),
                       if (p.id == _current!.id)
                         const Icon(Icons.check, size: 14, color: C.green),
                     ],
@@ -330,12 +463,37 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
               const PopupMenuDivider(),
               PopupMenuItem<String>(
                 value: 'add_plant',
-                child: Row(children: const [
-                  Icon(Icons.add, size: 16, color: C.green),
-                  SizedBox(width: 10),
-                  Text('Add new plant',
-                      style: TextStyle(color: C.green, fontSize: 13)),
-                ]),
+                child: Row(
+                  children: [
+                    _atPlantLimit
+                        ? const Icon(Icons.lock_outline,
+                            size: 15, color: C.textMuted)
+                        : const Icon(Icons.add, size: 16, color: C.green),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Add new plant',
+                      style: TextStyle(
+                          color: _atPlantLimit ? C.textMuted : C.green,
+                          fontSize: 13),
+                    ),
+                    if (_atPlantLimit) ...[
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: C.warn.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text('PRO',
+                            style: TextStyle(
+                                fontSize: 9,
+                                color: C.warn,
+                                fontWeight: FontWeight.w800)),
+                      ),
+                    ],
+                  ],
+                ),
               ),
               const PopupMenuDivider(),
               PopupMenuItem<String>(
@@ -354,8 +512,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
                   await AuthService.instance.signOut();
                   if (mounted) {
                     Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(
-                          builder: (_) => const AuthScreen()),
+                      MaterialPageRoute(builder: (_) => const AuthScreen()),
                       (_) => false,
                     );
                   }
@@ -363,9 +520,8 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Error signing out: $e'),
-                        backgroundColor: C.danger,
-                      ),
+                          content: Text('Error signing out: $e'),
+                          backgroundColor: C.danger),
                     );
                   }
                 }
@@ -409,19 +565,44 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
           child: Text(plant.emoji, style: const TextStyle(fontSize: 26)),
         ),
         const SizedBox(width: 14),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(plant.name,
-                style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.w700)),
-            Text(
-              '${plant.identifiedAs[0].toUpperCase()}${plant.identifiedAs.substring(1)} · $ageLabel',
-              style: const TextStyle(color: C.textMuted, fontSize: 13),
-            ),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(plant.name,
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w700)),
+              Text(
+                '${plant.identifiedAs[0].toUpperCase()}${plant.identifiedAs.substring(1)} · $ageLabel',
+                style: const TextStyle(color: C.textMuted, fontSize: 13),
+              ),
+            ],
+          ),
         ),
+        if (_latestResult != null) _buildScoreChip(_healthScore(_latestResult!)),
       ],
+    );
+  }
+
+  Widget _buildScoreChip(int score) {
+    final color = _healthColor(score);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        children: [
+          Text('$score',
+              style: TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.w800, color: color)),
+          Text('/ 100',
+              style: TextStyle(
+                  fontSize: 9, color: color.withValues(alpha: 0.7))),
+        ],
+      ),
     );
   }
 
@@ -438,11 +619,11 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Last watered',
-          style: TextStyle(
-              fontSize: 12, color: C.textMuted, fontWeight: FontWeight.w600),
-        ),
+        const Text('Last watered',
+            style: TextStyle(
+                fontSize: 12,
+                color: C.textMuted,
+                fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
@@ -464,8 +645,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
                       ? C.water.withValues(alpha: 0.6)
                       : C.border),
               showCheckmark: false,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             );
           }).toList(),
         ),
@@ -523,13 +703,13 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
             : Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: const [
-                  Icon(Icons.add_photo_alternate_outlined,
-                      color: C.textMuted, size: 40),
+                  Icon(Icons.camera_alt_outlined,
+                      color: C.textMuted, size: 38),
                   SizedBox(height: 10),
                   Text('Tap to upload a photo of your plant',
                       style: TextStyle(color: C.textMuted, fontSize: 13)),
                   SizedBox(height: 4),
-                  Text('JPG, PNG, WEBP',
+                  Text('JPG · PNG · WEBP',
                       style: TextStyle(color: C.textDim, fontSize: 11)),
                 ],
               ),
@@ -537,9 +717,9 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
     );
   }
 
-  // ── Check health button ───────────────────────────────────────────────────────
+  // ── Analyse button ────────────────────────────────────────────────────────────
 
-  Widget _buildCheckButton() {
+  Widget _buildAnalyseButton() {
     return SizedBox(
       height: 48,
       child: ElevatedButton.icon(
@@ -550,14 +730,11 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
                 height: 18,
                 child: CircularProgressIndicator(
                     strokeWidth: 2, color: Colors.white))
-            : const Icon(Icons.health_and_safety_outlined,
-                color: Colors.white, size: 18),
+            : const Icon(Icons.search, color: Colors.white, size: 18),
         label: Text(
-          _checking ? 'Analysing…' : 'Check Health',
+          _checking ? 'Analysing…' : 'Analyse Plant',
           style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 15,
-              color: Colors.white),
+              fontWeight: FontWeight.w600, fontSize: 15, color: Colors.white),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: C.green,
@@ -572,151 +749,116 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
   // ── Result card ───────────────────────────────────────────────────────────────
 
   Widget _buildResultCard(HealthCheck check, {bool isLatest = false}) {
+    final score = _healthScore(check);
+    final label = _healthLabel(score);
+    final scoreColor = _healthColor(score);
     final timeLabel = _formatTime(check.timestamp);
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: isLatest ? C.green.withValues(alpha: 0.06) : C.panelAlt,
-        borderRadius: BorderRadius.circular(12),
+        color: isLatest ? C.green.withValues(alpha: 0.05) : C.panelAlt,
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color:
-              isLatest ? C.green.withValues(alpha: 0.3) : C.border,
-        ),
+            color: isLatest ? C.green.withValues(alpha: 0.25) : C.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Header row ──────────────────────────────────────────────────────
+          // ── Score circle + status + timestamp ─────────────────────────────────
           Row(
             children: [
-              Icon(
-                Icons.health_and_safety,
-                color: isLatest ? C.green : C.textMuted,
-                size: 15,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                isLatest ? 'Latest result' : timeLabel,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: isLatest ? C.green : C.textMuted,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.6,
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: scoreColor.withValues(alpha: 0.1),
+                  border: Border.all(
+                      color: scoreColor.withValues(alpha: 0.35), width: 2),
+                ),
+                child: Center(
+                  child: Text('$score',
+                      style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: scoreColor)),
                 ),
               ),
-              if (isLatest) ...[
-                const Spacer(),
-                Text(timeLabel,
-                    style:
-                        const TextStyle(color: C.textDim, fontSize: 11)),
-              ],
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label,
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: scoreColor)),
+                    Text(
+                      isLatest ? 'Latest analysis · $timeLabel' : timeLabel,
+                      style: const TextStyle(fontSize: 12, color: C.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+              if (check.phenologicalStage.isNotEmpty)
+                _smallBadge(
+                    Icons.eco_outlined, check.phenologicalStage, C.green),
             ],
           ),
 
-          // ── Phenological stage + model badge ────────────────────────────────
-          if (check.phenologicalStage.isNotEmpty &&
-              check.phenologicalStage != 'vegetative' ||
-              check.modelUsed.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 6,
-              children: [
-                if (check.phenologicalStage.isNotEmpty)
-                  _smallBadge(
-                    Icons.eco_outlined,
-                    check.phenologicalStage,
-                    C.green,
-                  ),
-                if (check.modelUsed.isNotEmpty)
-                  _smallBadge(
-                    Icons.memory_outlined,
-                    check.modelUsed,
-                    C.textDim,
-                  ),
-              ],
-            ),
-          ],
-
-          // ── Stress prediction bars ────────────────────────────────────────────
+          // ── Care indicators ───────────────────────────────────────────────────
           if (check.waterStress > 0 ||
               check.nutrientStress > 0 ||
               check.temperatureStress > 0) ...[
-            const SizedBox(height: 14),
-            _sectionLabel('Stress Levels'),
+            const SizedBox(height: 18),
+            _sectionLabel('CARE INDICATORS'),
+            const SizedBox(height: 10),
+            _careBar('💧  Hydration', check.waterStress,
+                check.waterStressCat, C.water),
             const SizedBox(height: 8),
-            _stressBar('Water', check.waterStress, check.waterStressCat,
-                C.water),
-            const SizedBox(height: 6),
-            _stressBar('Nutrient', check.nutrientStress,
+            _careBar('🌱  Nutrition', check.nutrientStress,
                 check.nutrientStressCat, C.nutrient),
-            const SizedBox(height: 6),
-            _stressBar('Temperature', check.temperatureStress,
+            const SizedBox(height: 8),
+            _careBar('🌡️  Climate', check.temperatureStress,
                 check.temperatureStressCat, C.hvac),
           ],
 
-          // ── Visual scores ─────────────────────────────────────────────────────
-          if (check.leafYellowingScore > 0 ||
-              check.leafDroopScore > 0 ||
-              check.necrosisScore > 0) ...[
-            const SizedBox(height: 14),
-            _sectionLabel('Visual Scores'),
+          // ── AI insights ───────────────────────────────────────────────────────
+          if (check.healthSummary.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            _sectionLabel('AI INSIGHTS'),
             const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                    child: _visualScore(
-                        'Yellowing', check.leafYellowingScore)),
-                const SizedBox(width: 8),
-                Expanded(
-                    child:
-                        _visualScore('Droop', check.leafDroopScore)),
-                const SizedBox(width: 8),
-                Expanded(
-                    child:
-                        _visualScore('Necrosis', check.necrosisScore)),
-              ],
-            ),
+            Text(check.healthSummary,
+                style: const TextStyle(
+                    fontSize: 14, height: 1.55, color: C.textPrimary)),
           ],
 
-          // ── Health summary ─────────────────────────────────────────────────────
-          const SizedBox(height: 12),
-          Text(
-            check.healthSummary,
-            style: const TextStyle(fontSize: 14, height: 1.5),
-          ),
-
-          // ── Recommended actions ────────────────────────────────────────────────
+          // ── What to do ────────────────────────────────────────────────────────
           if (check.recommendedActions.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: check.recommendedActions.map((action) {
-                return Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: C.green.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                        color: C.green.withValues(alpha: 0.25)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.task_alt,
-                          color: C.green, size: 12),
-                      const SizedBox(width: 5),
-                      Text(action,
+            const SizedBox(height: 18),
+            _sectionLabel('WHAT TO DO'),
+            const SizedBox(height: 10),
+            ...check.recommendedActions.map(
+              (action) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.check_circle_outline,
+                        color: C.green, size: 15),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(action,
                           style: const TextStyle(
-                              color: C.green,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500)),
-                    ],
-                  ),
-                );
-              }).toList(),
+                              fontSize: 13,
+                              color: C.textPrimary,
+                              height: 1.4)),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ],
@@ -724,9 +866,9 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
     );
   }
 
-  // ── Stress bar ────────────────────────────────────────────────────────────────
+  // ── Care bar ──────────────────────────────────────────────────────────────────
 
-  Widget _stressBar(
+  Widget _careBar(
       String label, double value, String cat, Color baseColor) {
     final catColor = switch (cat) {
       'high' => C.danger,
@@ -737,10 +879,9 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
     return Row(
       children: [
         SizedBox(
-          width: 88,
+          width: 110,
           child: Text(label,
-              style:
-                  const TextStyle(fontSize: 12, color: C.textMuted)),
+              style: const TextStyle(fontSize: 12, color: C.textMuted)),
         ),
         Expanded(
           child: ClipRRect(
@@ -754,51 +895,16 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
           ),
         ),
         const SizedBox(width: 8),
-        Container(
-          width: 52,
-          alignment: Alignment.centerRight,
-          child: Text(
-            cat,
-            style: TextStyle(
-                fontSize: 11,
-                color: catColor,
-                fontWeight: FontWeight.w600),
-          ),
+        SizedBox(
+          width: 48,
+          child: Text(cat,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                  fontSize: 11,
+                  color: catColor,
+                  fontWeight: FontWeight.w600)),
         ),
       ],
-    );
-  }
-
-  // ── Visual score mini-widget ──────────────────────────────────────────────────
-
-  Widget _visualScore(String label, double value) {
-    final pct = (value * 100).round();
-    final color = value < 0.3
-        ? C.green
-        : value < 0.6
-            ? C.warn
-            : C.danger;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        children: [
-          Text('$pct%',
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: color)),
-          const SizedBox(height: 2),
-          Text(label,
-              style:
-                  const TextStyle(fontSize: 10, color: C.textDim)),
-        ],
-      ),
     );
   }
 
@@ -833,32 +939,29 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
     return Text(
       text,
       style: const TextStyle(
-          fontSize: 11,
+          fontSize: 10,
           color: C.textMuted,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.5),
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.8),
     );
   }
 
   // ── History section ───────────────────────────────────────────────────────────
 
   Widget _buildHistorySection() {
-    final historyToShow = _latestResult != null
-        ? _history.skip(1).toList()
-        : _history;
+    final historyToShow =
+        _latestResult != null ? _history.skip(1).toList() : _history;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            const Text(
-              'Previous checks',
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: C.textMuted),
-            ),
+            const Text('History',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: C.textPrimary)),
             if (_loadingHistory) ...[
               const SizedBox(width: 10),
               const SizedBox(
@@ -869,20 +972,99 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
             ],
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         if (!_loadingHistory && historyToShow.isEmpty)
-          const Text(
-            'No previous checks yet.',
-            style: TextStyle(color: C.textDim, fontSize: 13),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 28),
+            alignment: Alignment.center,
+            child: const Column(
+              children: [
+                Text('📊', style: TextStyle(fontSize: 32)),
+                SizedBox(height: 10),
+                Text('No previous checks yet',
+                    style: TextStyle(
+                        color: C.textMuted,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500)),
+                SizedBox(height: 4),
+                Text(
+                  'Upload a photo and analyse your plant to get started',
+                  style: TextStyle(color: C.textDim, fontSize: 12),
+                ),
+              ],
+            ),
           )
         else
-          ...historyToShow
-              .map((c) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _buildResultCard(c),
-                  ))
-              .toList(),
+          ...historyToShow.map(
+            (c) => Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: _buildResultCard(c),
+            ),
+          ),
       ],
+    );
+  }
+
+  // ── Upgrade banner ────────────────────────────────────────────────────────────
+
+  Widget _buildUpgradeBanner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            C.green.withValues(alpha: 0.10),
+            C.warn.withValues(alpha: 0.07),
+          ],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: C.green.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.workspace_premium, color: C.warn, size: 20),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Upgrade to Plant Pro',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: C.textPrimary)),
+                SizedBox(height: 2),
+                Text('Unlimited plants · Advanced AI analysis',
+                    style: TextStyle(fontSize: 11, color: C.textMuted)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          _upgradingToPro
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child:
+                      CircularProgressIndicator(strokeWidth: 2, color: C.green))
+              : TextButton(
+                  onPressed: _upgradeToPro,
+                  style: TextButton.styleFrom(
+                    backgroundColor: C.green,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6)),
+                  ),
+                  child: const Text('Upgrade',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700)),
+                ),
+        ],
+      ),
     );
   }
 
@@ -906,8 +1088,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen> {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: C.danger.withValues(alpha: 0.4)),
       ),
-      child: Text(msg,
-          style: const TextStyle(color: C.danger, fontSize: 13)),
+      child: Text(msg, style: const TextStyle(color: C.danger, fontSize: 13)),
     );
   }
 }

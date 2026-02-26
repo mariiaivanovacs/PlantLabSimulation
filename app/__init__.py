@@ -39,13 +39,14 @@ def create_app():
         return send_from_directory(static_dir, 'index.html')
 
     # Register blueprints
-    from app.routes import simulation_routes, agent_routes, auth_routes, gemini_routes, plant_routes, mqtt_routes
+    from app.routes import simulation_routes, agent_routes, auth_routes, gemini_routes, plant_routes, mqtt_routes, stripe_routes
     app.register_blueprint(simulation_routes.bp, url_prefix='/api/simulation')
     app.register_blueprint(agent_routes.bp, url_prefix='/api/agents')
     app.register_blueprint(auth_routes.bp, url_prefix='/api/auth')
     app.register_blueprint(gemini_routes.bp, url_prefix='/api/gemini')
     app.register_blueprint(plant_routes.bp, url_prefix='/api/plants')
     app.register_blueprint(mqtt_routes.bp, url_prefix='/api/mqtt')
+    app.register_blueprint(stripe_routes.bp, url_prefix='/api/stripe')
 
     # Health check endpoint (required for Cloud Run)
     @app.route('/health')

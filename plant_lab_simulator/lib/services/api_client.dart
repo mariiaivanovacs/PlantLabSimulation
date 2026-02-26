@@ -4,12 +4,21 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http; // ignore: depend_on_referenced_packages
 
 /// API client for Flask backend.
-/// Override the base URL at build time:
+///
+/// The base URL is injected at build time via --dart-define=API_BASE_URL=...
+/// build_web.sh / build_web.ps1 set this automatically from APP_URL in .env.
+///
+/// Local flutter run (dev mode, no build script):
+///   flutter run --dart-define=API_BASE_URL=http://localhost:5010/api
+/// Local network device:
 ///   flutter run --dart-define=API_BASE_URL=http://192.168.1.22:5010/api
+///
+/// The default below is ONLY used when running `flutter run` without --dart-define.
+/// Production builds always receive the value from build_web.sh / build_web.ps1.
 class ApiClient {
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://localhost:5010/api',
+    defaultValue: 'http://localhost:5600/api',
   );
 
   // Singleton instance
@@ -274,6 +283,24 @@ class ApiClient {
     return Map<String, dynamic>.from(response['profile'] ?? response);
   }
 
+  // --- Stripe billing endpoints ---
+
+  /// POST /stripe/create-checkout-session
+  /// Returns the Stripe hosted checkout URL to redirect the user to.
+  Future<String> createCheckoutSession() async {
+    final response = await postRequest('/stripe/create-checkout-session', {});
+    final url = response['checkout_url'] as String?;
+    if (url == null) throw Exception('No checkout_url in response');
+    return url;
+  }
+
+  /// GET /stripe/subscription-status
+  /// Returns { success, plan: "free"|"pro", subscriptionStatus: "active"|"inactive" }
+  Future<Map<String, dynamic>> getSubscriptionStatus() async {
+    final response = await getRequest('/stripe/subscription-status');
+    return Map<String, dynamic>.from(response as Map);
+  }
+
   // --- MQTT endpoints ---
 
   /// GET /mqtt/config
@@ -294,7 +321,6 @@ class ApiClient {
     final response = await getRequest('/mqtt/latest');
     return Map<String, dynamic>.from(response as Map);
   }
-
 }
 
 // --- Response Models ---
@@ -665,4 +691,3 @@ class SimulationStepResponse {
     );
   }
 }
-

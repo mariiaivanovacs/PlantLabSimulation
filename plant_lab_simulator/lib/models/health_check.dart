@@ -1,5 +1,7 @@
 /// One AI health check result.
 /// Written to Firestore server-side: users/{uid}/plants/{plantId}/health_checks/{id}
+import 'package:flutter/foundation.dart';
+
 class HealthCheck {
   final String id;
   final DateTime timestamp;
@@ -54,9 +56,32 @@ class HealthCheck {
 
   /// Parse a health check returned from the Flask backend (plain JSON map).
   factory HealthCheck.fromJson(Map<String, dynamic> d) {
+    // Parse timestamp with better error handling
+    final rawTimestamp = d['timestamp'];
+    DateTime parsedTimestamp = DateTime.now();
+    
+    if (rawTimestamp != null) {
+      if (rawTimestamp is String) {
+        parsedTimestamp = DateTime.tryParse(rawTimestamp) ?? DateTime.now();
+        if (parsedTimestamp == DateTime.now() && rawTimestamp.isNotEmpty) {
+          debugPrint('⚠️ Failed to parse timestamp string: "$rawTimestamp"');
+        }
+      } else if (rawTimestamp is int) {
+        try {
+          // Assume Unix timestamp in seconds
+          parsedTimestamp = DateTime.fromMillisecondsSinceEpoch(rawTimestamp * 1000);
+          debugPrint('ℹ️ Parsed Unix timestamp: $rawTimestamp → ${parsedTimestamp.toIso8601String()}');
+        } catch (e) {
+          debugPrint('⚠️ Failed to parse Unix timestamp: $rawTimestamp ($e)');
+        }
+      } else {
+        debugPrint('⚠️ Unexpected timestamp type: ${rawTimestamp.runtimeType} = $rawTimestamp');
+      }
+    }
+    
     return HealthCheck(
       id:                   d['id']                    as String? ?? '',
-      timestamp:            DateTime.tryParse(d['timestamp'] as String? ?? '') ?? DateTime.now(),
+      timestamp:            parsedTimestamp,
       plantType:            d['plant_type']             as String? ?? '',
       ageDays:              (d['age_days'] as num?)?.toInt() ?? 0,
       healthSummary:        d['health_summary']          as String? ?? '',

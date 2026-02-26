@@ -211,8 +211,22 @@ class UserService:
         for d in col.stream():
             data = d.to_dict()
             data['id'] = d.id
+            # Log raw timestamp before coercion for debugging
+            raw_timestamp = data.get('timestamp')
             data = self._coerce_timestamps(data)
+            coerced_timestamp = data.get('timestamp')
+            
+            if raw_timestamp != coerced_timestamp:
+                logger.debug(
+                    f"Timestamp coerced for health check {d.id}: {raw_timestamp!r} → {coerced_timestamp!r}"
+                )
             result.append(data)
+            
+        result.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        logger.info(
+            f"Fetched {len(result)} health checks for plant {plant_id} of user {uid}"
+        )
         return result
 
     # ── simulation counter ────────────────────────────────────────────────────
@@ -253,10 +267,20 @@ class UserService:
 
     @staticmethod
     def _coerce_timestamps(data: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert Firestore Timestamp objects to ISO strings."""
+        """Convert Firestore Timestamp objects and Unix timestamps to ISO strings."""
         for key, val in data.items():
             if hasattr(val, 'isoformat'):
+                # Already a datetime object
                 data[key] = val.isoformat()
-            elif hasattr(val, '_seconds'):  # Firestore Timestamp
+            elif hasattr(val, '_seconds'):
+                # Firestore Timestamp object
                 data[key] = datetime.fromtimestamp(val._seconds, tz=timezone.utc).isoformat()
+            elif isinstance(val, (int, float)) and key == 'timestamp':
+                # Unix timestamp (seconds). Assume seconds, not milliseconds
+                # (Firestore stores timestamps, backend saves with int(time()))
+                try:
+                    data[key] = datetime.fromtimestamp(val, tz=timezone.utc).isoformat()
+                except (ValueError, OSError):
+                    # Invalid timestamp, leave as-is
+                    pass
         return data

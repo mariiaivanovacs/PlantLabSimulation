@@ -132,8 +132,8 @@ class ReasoningAgent:
         try:
             import google.generativeai as genai
             genai.configure(api_key=api_key)
-            cls._gemini_model = genai.GenerativeModel('gemini-1.5-flash')
-            logger.info('Gemini reasoning client ready (gemini-1.5-flash)')
+            cls._gemini_model = genai.GenerativeModel('gemini-2.5-flash')
+            logger.info('Gemini reasoning client ready (gemini-2.5-flash)')
         except Exception as exc:
             logger.warning('Gemini init failed: %s', exc)
 

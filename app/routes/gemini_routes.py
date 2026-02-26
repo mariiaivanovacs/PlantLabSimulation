@@ -9,6 +9,7 @@ import base64
 import json
 import logging
 import io
+from time import time
 
 from flask import Blueprint, request, jsonify
 
@@ -36,6 +37,26 @@ _IDENTIFY_TEXT_TEMPLATE = (
     "One word only. No punctuation. No explanation."
 )
 
+# _HEALTH_PROMPT_TEMPLATE = (
+#     "You are an expert plant biologist and health advisor.\n"
+#     "This is a {plant_type} plant that has been growing for {age_days} day(s).\n\n"
+#     "Carefully analyse the image and respond ONLY with valid JSON in this exact format "
+#     "(no markdown fences, no extra keys, floats in 0.0–1.0 range unless noted):\n"
+#     '{{\n'
+#     '  "phenological_stage": "one of: seed | seedling | vegetative | flowering | fruiting | mature",\n'
+#     '  "estimated_biomass_g": <float: estimated dry plant mass grams, e.g. 12.5>,\n'
+#     '  "estimated_leaf_area_m2": <float: total visible leaf area m², e.g. 0.045>,\n'
+#     '  "leaf_yellowing_score": <float 0-1: 0=all-green healthy, 1=severe yellowing/chlorosis>,\n'
+#     '  "leaf_droop_score": <float 0-1: 0=fully turgid upright, 1=severe wilting/drooping>,\n'
+#     '  "necrosis_score": <float 0-1: 0=no dead tissue, 1=widespread necrotic spots>,\n'
+#     '  "health_summary": "2-3 sentences: current health, visible symptoms, overall condition.",\n'
+#     '  "recommended_actions": ["specific action 1", "specific action 2", "specific action 3"]\n'
+#     '}}\n'
+#     "Be precise with the visual scores — they drive automated stress predictions. "
+#     "Recommended actions must be practical: watering schedule, fertilisation, light, "
+#     "temperature, pest or disease treatment."
+# )
+
 _HEALTH_PROMPT_TEMPLATE = (
     "You are an expert plant biologist and health advisor.\n"
     "This is a {plant_type} plant that has been growing for {age_days} day(s).\n\n"
@@ -48,12 +69,12 @@ _HEALTH_PROMPT_TEMPLATE = (
     '  "leaf_yellowing_score": <float 0-1: 0=all-green healthy, 1=severe yellowing/chlorosis>,\n'
     '  "leaf_droop_score": <float 0-1: 0=fully turgid upright, 1=severe wilting/drooping>,\n'
     '  "necrosis_score": <float 0-1: 0=no dead tissue, 1=widespread necrotic spots>,\n'
-    '  "health_summary": "2-3 sentences: current health, visible symptoms, overall condition.",\n'
-    '  "recommended_actions": ["specific action 1", "specific action 2", "specific action 3"]\n'
+    '  "health_summary": "2-3 short, plain-language sentences (no scientific jargon). Say what you see, whether it is urgent, and what that means for a typical home-owner (e.g., \"plant is slightly underwatered; water soon\").",\n'
+    '  "recommended_actions": ["1-2 concise, ordered actions that a home-owner can follow. Use very simple, everyday language (no scientific terms). Include clear timing or amounts when helpful (e.g. \\\"water now: 200 ml\\\", \\\"move to a cooler room\\\", \\\"check again tomorrow\\\"). Keep all advice realistic for a normal home setting."]\n'
     '}}\n'
     "Be precise with the visual scores — they drive automated stress predictions. "
     "Recommended actions must be practical: watering schedule, fertilisation, light, "
-    "temperature, pest or disease treatment."
+    "temperature, pest or disease treatment. Keep language simple and actionable for a non-scientist."
 )
 
 
@@ -269,10 +290,10 @@ def check_health():
             uid = UserService.get().verify_token(auth_header[len('Bearer '):])
         except Exception:
             pass
-
+    timestamp_now = int(time())
     if uid and plant_id:
         record = {
-            'timestamp':             __import__('datetime').datetime.utcnow().isoformat(),
+            'timestamp':             timestamp_now,
             'plant_type':            plant_type,
             'age_days':              age_days,
             'phenological_stage':    stage,
@@ -294,7 +315,7 @@ def check_health():
             'room_temp_c':           room_temp_c,
         }
         firestore_id = StressPredictionService.save_to_firestore(uid, plant_id, record)
-
+    # logger.info(f"Health check history ")
     # ── Step 5: Return enriched response ──────────────────────────────────────
     return jsonify({
         'success': True,

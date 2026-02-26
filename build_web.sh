@@ -18,8 +18,8 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-# Read FIREBASE_* vars from .env into the current shell
-eval "$(grep -E '^FIREBASE_[A-Z_]+=' "$ENV_FILE" | grep -v '^#')"
+# Read FIREBASE_* and APP_URL vars from .env into the current shell
+eval "$(grep -E '^(FIREBASE_[A-Z_]+=|APP_URL=)' "$ENV_FILE" | grep -v '^#')"
 
 # ── Validate required web vars ─────────────────────────────────────────────────
 required_vars=(
@@ -54,13 +54,24 @@ if [ "$1" = "--debug" ]; then
   BUILD_FLAGS=""
 fi
 
+# Resolve API base URL: uses same-origin /api by default
+# This works because Flask serves both frontend and backend from the same host.
+# If APP_URL is set in .env, it will be used instead (for separate deployments).
+if [ -n "$APP_URL" ]; then
+  API_BASE_URL="${APP_URL}/api"
+else
+  # Same-origin: API calls will be relative (e.g., /api/simulation/start)
+  API_BASE_URL="/api"
+fi
+
 flutter build web $BUILD_FLAGS \
   --dart-define="FIREBASE_API_KEY=$FIREBASE_API_KEY" \
   --dart-define="FIREBASE_APP_ID=$FIREBASE_APP_ID" \
   --dart-define="FIREBASE_MESSAGING_SENDER_ID=$FIREBASE_MESSAGING_SENDER_ID" \
   --dart-define="FIREBASE_PROJECT_ID=$FIREBASE_PROJECT_ID" \
   --dart-define="FIREBASE_AUTH_DOMAIN=$FIREBASE_AUTH_DOMAIN" \
-  --dart-define="FIREBASE_STORAGE_BUCKET=$FIREBASE_STORAGE_BUCKET"
+  --dart-define="FIREBASE_STORAGE_BUCKET=$FIREBASE_STORAGE_BUCKET" \
+  --dart-define="API_BASE_URL=$API_BASE_URL"
 
 # ── Deploy to Flask ────────────────────────────────────────────────────────────
 cp -r build/web/* "$SCRIPT_DIR/app/templates/"
