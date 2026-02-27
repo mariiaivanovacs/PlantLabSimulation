@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class C {
   // Core palette
@@ -42,10 +43,12 @@ class C {
 
 class PlantLabTheme {
   static ThemeData get darkTheme {
+    final _base = ThemeData.dark();
     return ThemeData(
       brightness: Brightness.dark,
       scaffoldBackgroundColor: C.bg,
-      textTheme: ThemeData.dark().textTheme.apply(
+      fontFamily: GoogleFonts.outfit().fontFamily,
+      textTheme: GoogleFonts.outfitTextTheme(_base.textTheme).apply(
         bodyColor: C.textPrimary,
         displayColor: C.textPrimary,
       ),

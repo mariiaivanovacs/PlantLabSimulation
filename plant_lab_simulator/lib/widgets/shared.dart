@@ -1,6 +1,113 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
 
+// ── Animated cyber gradient background ───────────────────────────────────────
+
+class AnimatedCyberBackground extends StatefulWidget {
+  const AnimatedCyberBackground({super.key});
+
+  @override
+  State<AnimatedCyberBackground> createState() =>
+      _AnimatedCyberBackgroundState();
+}
+
+class _AnimatedCyberBackgroundState extends State<AnimatedCyberBackground>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 8),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        final t = _ctrl.value;
+        final sweepX = -1.0 + (2.0 * t);
+        return Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFF0B0F14),
+                Color.lerp(
+                  const Color(0xFF0F2027),
+                  const Color(0xFF0D3018),
+                  t,
+                )!,
+                const Color(0xFF0F1115),
+              ],
+            ),
+          ),
+          child: Stack(
+            children: [
+              Align(
+                alignment: Alignment(sweepX, -0.3),
+                child: Container(
+                  width: 500,
+                  height: 500,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        Colors.tealAccent.withValues(alpha: 0.15),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ── App logo — loads assets/logo.png (transparent PNG) with icon fallback ───
+
+class AppLogoImage extends StatelessWidget {
+  final double size;
+  const AppLogoImage({super.key, this.size = 72});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Image.asset(
+        'assets/logo.png',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        // Falls back to the icon until the user drops their PNG into assets/
+        errorBuilder: (_, __, ___) => Icon(
+          Icons.eco,
+          color: C.green,
+          size: size * 0.65,
+        ),
+      ),
+    );
+  }
+}
+
 class Panel extends StatelessWidget {
   final Widget child;
   final Color? accentLeft;

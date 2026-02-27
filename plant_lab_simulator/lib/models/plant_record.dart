@@ -43,4 +43,19 @@ class PlantRecord {
         return '🪴';
     }
   }
+
+  /// Asset path for the plant-type image (transparent PNG).
+  /// Falls back to emoji via errorBuilder if the file isn't in assets/.
+  String get plantImagePath {
+    switch (identifiedAs) {
+      case 'tomato':
+        return 'assets/tomato.png';
+      case 'lettuce':
+        return 'assets/lettuce.png';
+      case 'basil':
+        return 'assets/basil.png';
+      default:
+        return 'assets/logo.png';
+    }
+  }
 }

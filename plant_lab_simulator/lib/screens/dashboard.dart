@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
 import '../widgets/shared.dart';
@@ -763,20 +764,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Plant Lab Simulator',
-                  style: TextStyle(
+                  style: GoogleFonts.outfit(
                       color: C.green,
                       fontSize: 22,
                       fontWeight: FontWeight.w800),
                 ),
                 Text(
                   'Flask-Powered Growth Simulation',
-                  style: TextStyle(color: C.textMuted, fontSize: 15),
+                  style: GoogleFonts.outfit(
+                      color: C.textMuted,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w400),
                 ),
               ],
             ),
@@ -979,13 +983,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Row(
                       children: [
-                        Icon(Icons.grass, color: C.green, size: 24),
-                        SizedBox(width: 12),
+                        const Icon(Icons.grass, color: C.green, size: 24),
+                        const SizedBox(width: 12),
                         Text(
                           'Start New Simulation',
-                          style: TextStyle(
+                          style: GoogleFonts.outfit(
                               fontSize: 18, fontWeight: FontWeight.w700),
                         ),
                       ],
@@ -1500,10 +1504,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(label, style: const TextStyle(color: C.textMuted, fontSize: 15)),
+          Text(label,
+              style: GoogleFonts.outfit(
+                  color: C.textMuted,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w400)),
           Text(
             value,
-            style: TextStyle(
+            style: GoogleFonts.outfit(
               fontWeight: FontWeight.w700,
               fontSize: 19,
               color: alert ?? C.textPrimary,
