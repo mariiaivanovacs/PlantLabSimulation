@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme.dart';
@@ -727,17 +728,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
+      backgroundColor: C.bg,
+      body: Stack(
         children: [
-          _buildHeader(),
-          Expanded(
-            // Keep the running view visible as long as we have state data —
-            // this includes when the plant has died but the simulation is no
-            // longer "running". Profile view is only shown before any
-            // simulation has been started (or after the user resets).
-            child: simulationState != null
-                ? _buildRunningView()
-                : _buildProfileView(),
+          const AnimatedCyberBackground(),
+          Container(
+            width: double.infinity,
+            height: double.infinity,
+            color: Colors.black.withValues(alpha: 0.42),
+          ),
+          Column(
+            children: [
+              _buildHeader(),
+              Expanded(
+                child: simulationState != null
+                    ? _buildRunningView()
+                    : _buildProfileView(),
+              ),
+            ],
           ),
         ],
       ),
@@ -747,222 +755,239 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildHeader() {
     final alive = _b('is_alive');
     final damage = _d('cumulative_damage');
-    final simHour = _i('hour');                      // absolute simulation hours
-    final hoursPerTick =
-        (simulationConfig?['hours_per_tick'] as num?)?.toInt() ?? 1;
-    final tick = hoursPerTick > 1 ? simHour ~/ hoursPerTick : simHour;
-    final day = simHour ~/ 24;
-    // Label: "T" = ticks when hours_per_tick>1 (user-chosen unit), "H" otherwise
-    // final tickLabel = hoursPerTick > 1 ? 'T$tick (${hoursPerTick}h)' : 'H$tick';
-    final tickLabel = 'DEbug info: simHour=$simHour, hoursPerTick=$hoursPerTick, tick=$tick';
+    final totalHour = _i('hour');
+    final day = totalHour ~/ 24;
+    final hourOfDay = totalHour % 24;
+    final hasStatus = simulationRunning && simulationState != null;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(colors: [C.bg, Color(0xFF122018)]),
-        border: Border(bottom: BorderSide(color: C.border, width: 2)),
+    // ── Reusable chip widgets ────────────────────────────────────────────────
+    final dayChip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Plant Lab Simulator',
-                  style: GoogleFonts.outfit(
-                      color: C.green,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800),
-                ),
-                Text(
-                  'Flask-Powered Growth Simulation',
-                  style: GoogleFonts.outfit(
-                      color: C.textMuted,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w400),
-                ),
-              ],
+      child: Text(
+        'Day $day · ${hourOfDay.toString().padLeft(2, '0')}:00',
+        style: GoogleFonts.outfit(
+            fontWeight: FontWeight.w600, fontSize: 13, color: C.textPrimary),
+      ),
+    );
+
+    final aliveChip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: alive
+            ? C.green.withValues(alpha: 0.15)
+            : C.danger.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: alive
+              ? C.green.withValues(alpha: 0.40)
+              : C.danger.withValues(alpha: 0.40),
+        ),
+      ),
+      child: Text(
+        '${alive ? "ALIVE" : "DEAD"} · ${damage.toStringAsFixed(0)}%',
+        style: GoogleFonts.outfit(
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+            color: alive ? C.green : C.danger),
+      ),
+    );
+
+    final bellIcon = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          key: _notifBellKey,
+          icon: Icon(
+            Icons.notifications_outlined,
+            color: (_notifyNutrientStress && _d('nutrient_stress') > 0.3)
+                ? C.warn
+                : C.textMuted,
+            size: 22,
+          ),
+          tooltip: 'Nutrient status',
+          onPressed: _showNutrientNotification,
+        ),
+        if (_notifyNutrientStress && _d('nutrient_stress') > 0.3)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                  color: C.danger, shape: BoxShape.circle),
             ),
           ),
-          if (simulationRunning && simulationState != null) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: C.panelAlt,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                'Day $day · $tickLabel',
-                style:
-                    const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-              ),
-            ),
-            const SizedBox(width: 10),
-            // Health chip — reads directly from simulationState
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: alive
-                    ? C.greenSoft.withValues(alpha: 0.85)
-                    : C.danger.withValues(alpha: 0.8),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Text(
-                '${alive ? "🌿" : "💀"} ${alive ? "ALIVE" : "DEAD"} · ${damage.toStringAsFixed(0)}%',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                  color: alive ? C.greenDark : Colors.white,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          // Nutrient notification bell — shown only when simulation running
-          if (simulationRunning && simulationState != null)
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                IconButton(
-                  key: _notifBellKey,
-                  icon: Icon(
-                    Icons.notifications_outlined,
-                    color: (_notifyNutrientStress && _d('nutrient_stress') > 0.3)
-                        ? C.warn
-                        : C.textMuted,
-                    size: 22,
-                  ),
-                  tooltip: 'Nutrient status',
-                  onPressed: _showNutrientNotification,
-                ),
-                if (_notifyNutrientStress && _d('nutrient_stress') > 0.3)
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: C.danger,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: C.textMuted, size: 20),
-            color: C.panel,
-            onSelected: (value) async {
-              switch (value) {
-                case 'metrics':
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const MetricsViewerScreen()));
-                  break;
-                case 'diagnostics':
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const DiagnosticsScreen()));
-                  break;
-                case 'executor':
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const ExecutorLogScreen()));
-                  break;
-                case 'monitor':
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const MonitorSettingsScreen()));
-                  break;
-                case 'mqtt':
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const MqttSettingsScreen()));
-                  break;
-                case 'signout':
-                  try {
-                    try { await _api.stopSimulation(); } catch (_) {}
-                    await AuthService.instance.signOut();
-                    if (mounted) {
-                      Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(
-                            builder: (_) => const AuthScreen()),
-                        (_) => false,
-                      );
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Error signing out: $e'),
-                          backgroundColor: C.danger,
-                        ),
-                      );
-                    }
-                  }
-                  break;
+      ],
+    );
+
+    final menuBtn = PopupMenuButton<String>(
+      icon: const Icon(Icons.more_vert, color: C.textMuted, size: 20),
+      color: C.panel,
+      onSelected: (value) async {
+        switch (value) {
+          case 'metrics':
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const MetricsViewerScreen()));
+            break;
+          case 'diagnostics':
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const DiagnosticsScreen()));
+            break;
+          case 'executor':
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const ExecutorLogScreen()));
+            break;
+          case 'monitor':
+            Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const MonitorSettingsScreen()));
+            break;
+          case 'mqtt':
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const MqttSettingsScreen()));
+            break;
+          case 'signout':
+            try {
+              try {
+                await _api.stopSimulation();
+              } catch (_) {}
+              await AuthService.instance.signOut();
+              if (mounted) {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const AuthScreen()),
+                  (_) => false,
+                );
               }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'metrics',
-                child: Row(children: [
-                  Icon(Icons.show_chart, color: C.green, size: 18),
-                  SizedBox(width: 8),
-                  Text('Metrics'),
-                ]),
-              ),
-              PopupMenuItem(
-                value: 'diagnostics',
-                child: Row(children: [
-                  Icon(Icons.analytics, color: C.info, size: 18),
-                  SizedBox(width: 8),
-                  Text('Diagnostics'),
-                ]),
-              ),
-              PopupMenuItem(
-                value: 'executor',
-                child: Row(children: [
-                  Icon(Icons.history, color: C.textMuted, size: 18),
-                  SizedBox(width: 8),
-                  Text('Action Log'),
-                ]),
-              ),
-              PopupMenuItem(
-                value: 'monitor',
-                child: Row(children: [
-                  Icon(Icons.settings, color: C.textMuted, size: 18),
-                  SizedBox(width: 8),
-                  Text('Monitor Settings'),
-                ]),
-              ),
-              PopupMenuItem(
-                value: 'mqtt',
-                child: Row(children: [
-                  Icon(Icons.cell_tower, color: C.info, size: 18),
-                  SizedBox(width: 8),
-                  Text('MQTT Settings'),
-                ]),
-              ),
-              PopupMenuItem(
-                value: 'signout',
-                child: Row(children: [
-                  Icon(Icons.logout, color: C.danger, size: 18),
-                  SizedBox(width: 8),
-                  Text('Sign Out',
-                      style: TextStyle(color: C.danger)),
-                ]),
-              ),
-            ],
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Error signing out: $e'),
+                    backgroundColor: C.danger));
+              }
+            }
+            break;
+        }
+      },
+      itemBuilder: (context) => const [
+        PopupMenuItem(
+            value: 'metrics',
+            child: Row(children: [
+              Icon(Icons.show_chart, color: C.green, size: 18),
+              SizedBox(width: 8),
+              Text('Metrics')
+            ])),
+        PopupMenuItem(
+            value: 'diagnostics',
+            child: Row(children: [
+              Icon(Icons.analytics, color: C.info, size: 18),
+              SizedBox(width: 8),
+              Text('Diagnostics')
+            ])),
+        PopupMenuItem(
+            value: 'executor',
+            child: Row(children: [
+              Icon(Icons.history, color: C.textMuted, size: 18),
+              SizedBox(width: 8),
+              Text('Action Log')
+            ])),
+        PopupMenuItem(
+            value: 'monitor',
+            child: Row(children: [
+              Icon(Icons.settings, color: C.textMuted, size: 18),
+              SizedBox(width: 8),
+              Text('Monitor Settings')
+            ])),
+        PopupMenuItem(
+            value: 'mqtt',
+            child: Row(children: [
+              Icon(Icons.cell_tower, color: C.info, size: 18),
+              SizedBox(width: 8),
+              Text('MQTT Settings')
+            ])),
+        PopupMenuItem(
+            value: 'signout',
+            child: Row(children: [
+              Icon(Icons.logout, color: C.danger, size: 18),
+              SizedBox(width: 8),
+              Text('Sign Out', style: TextStyle(color: C.danger))
+            ])),
+      ],
+    );
+
+    // ── Glass header container ───────────────────────────────────────────────
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.55),
+            border: Border(
+                bottom: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.08))),
           ),
-        ],
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 500;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Plant Lab Simulator',
+                              style: GoogleFonts.outfit(
+                                  color: C.green,
+                                  fontSize: wide ? 20 : 16,
+                                  fontWeight: FontWeight.w800),
+                            ),
+                            if (wide)
+                              Text(
+                                'Flask-Powered Growth Simulation',
+                                style: GoogleFonts.outfit(
+                                    color: C.textMuted,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w400),
+                              ),
+                          ],
+                        ),
+                      ),
+                      if (wide && hasStatus) ...[
+                        dayChip,
+                        const SizedBox(width: 8),
+                        aliveChip,
+                        const SizedBox(width: 4),
+                      ],
+                      if (hasStatus) bellIcon,
+                      menuBtn,
+                    ],
+                  ),
+                  // On narrow screens, status chips move to their own row
+                  if (!wide && hasStatus) ...[
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      dayChip,
+                      const SizedBox(width: 8),
+                      aliveChip,
+                    ]),
+                  ],
+                ],
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -973,13 +998,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Center(
       child: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
               // ── Plant & simulation setup ─────────────────────────────────
               Panel(
+                glass: true,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1187,6 +1216,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
       ),
+    ),
+  ),
     );
   }
 
@@ -1195,9 +1226,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
-        color: C.panelAlt,
-        border: Border.all(color: C.border),
-        borderRadius: BorderRadius.circular(6),
+        color: Colors.white.withValues(alpha: 0.06),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: child,
     );
@@ -1322,6 +1353,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final stageLabel = _stage.label;
     final day = _i('hour') ~/ 24;
     return Panel(
+      glass: true,
       child: Column(
         children: [
           const PanelTitle('Plant Visual'),
@@ -1346,6 +1378,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final nutrientStress = _d('nutrient_stress');
 
     return Panel(
+      glass: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1394,33 +1427,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          _stressRow('Water', waterStress, C.water),
-          _stressRow('Temperature', tempStress, C.hvac),
-          _stressRow('Nutrient', nutrientStress, C.nutrient),
+          _stressRow('Water', waterStress),
+          _stressRow('Temperature', tempStress),
+          _stressRow('Nutrient', nutrientStress),
         ],
       ),
     );
   }
 
-  Widget _stressRow(String label, double value, Color color) {
+  /// Returns green/amber/red based on stress level — informative, not type-coded.
+  Color _stressColor(double stress) {
+    if (stress < 0.25) return C.green;
+    if (stress < 0.55) return C.warn;
+    return C.danger;
+  }
+
+  Widget _stressRow(String label, double value) {
+    final color = _stressColor(value);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Row(
         children: [
           SizedBox(
             width: 100,
             child: Text(label,
-                style: const TextStyle(fontSize: 16, color: C.textMuted)),
+                style: const TextStyle(fontSize: 13, color: C.textMuted)),
           ),
-          Expanded(
-              child: BarGauge(value: value * 100, color: color, height: 6)),
-          const SizedBox(width: 6),
+          Expanded(child: BarGauge(value: value * 100, color: color, height: 6)),
+          const SizedBox(width: 8),
           SizedBox(
-            width: 44,
+            width: 40,
             child: Text(
               '${(value * 100).toStringAsFixed(0)}%',
               textAlign: TextAlign.right,
-              style: const TextStyle(fontSize: 15, color: C.textMuted),
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: color),
             ),
           ),
         ],
@@ -1431,6 +1474,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildPhenologyPanel() {
     final stage = _stage;
     return Panel(
+      glass: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1458,7 +1502,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final soilN = _d('soil_N');
     final soilEC = _d('soil_EC');
 
+    // 3-level semantic alerts: danger → warn → null (ok)
+    Color? soilWaterAlert = soilWater < 10
+        ? C.danger
+        : soilWater < 20
+            ? C.warn
+            : null;
+    Color? airTempAlert = (airTemp > 36 || airTemp < 8)
+        ? C.danger
+        : (airTemp > 32 || airTemp < 12)
+            ? C.warn
+            : null;
+    Color? rhAlert = (rh < 30 || rh > 90)
+        ? C.danger
+        : (rh < 40 || rh > 80)
+            ? C.warn
+            : null;
+    Color? parAlert = par < 50
+        ? C.warn
+        : par > 1800
+            ? C.warn
+            : null;
+    Color? vpdAlert = vpd > 2.5
+        ? C.danger
+        : vpd > 1.8
+            ? C.warn
+            : null;
+    Color? soilTempAlert =
+        (soilTemp > 32 || soilTemp < 8) ? C.warn : null;
+    Color? soilNAlert = soilN < 30
+        ? C.danger
+        : soilN < 70
+            ? C.warn
+            : null;
+    Color? soilECAlert = soilEC > 4.0
+        ? C.danger
+        : soilEC > 3.0
+            ? C.warn
+            : null;
+
     return Panel(
+      glass: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1469,20 +1553,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
             physics: const NeverScrollableScrollPhysics(),
             mainAxisSpacing: 6,
             crossAxisSpacing: 6,
-            childAspectRatio: 2.0,
+            childAspectRatio: 2.2,
             children: [
-              _envTile('Soil Moisture', '${soilWater.toStringAsFixed(1)}%',
-                  soilWater < 15 ? C.danger : null),
-              _envTile('Air Temp', '${airTemp.toStringAsFixed(1)}°C',
-                  (airTemp > 33 || airTemp < 12) ? C.danger : null),
-              _envTile('Humidity', '${rh.toStringAsFixed(0)}%', null),
-              _envTile('PAR', par.toStringAsFixed(0), null),
-              _envTile('VPD', '${vpd.toStringAsFixed(2)} kPa', null),
-              _envTile('Soil Temp', '${soilTemp.toStringAsFixed(1)}°C', null),
-              _envTile('Soil N', '${soilN.toStringAsFixed(0)} ppm',
-                  soilN < 60 ? C.warn : null),
-              _envTile('Soil EC', '${soilEC.toStringAsFixed(2)} mS/cm',
-                  soilEC > 3.5 ? C.danger : null),
+              _envTile('Soil Moisture', '${soilWater.toStringAsFixed(1)}%', soilWaterAlert),
+              _envTile('Air Temp', '${airTemp.toStringAsFixed(1)}°C', airTempAlert),
+              _envTile('Humidity', '${rh.toStringAsFixed(0)}%', rhAlert),
+              _envTile('PAR', '${par.toStringAsFixed(0)} µ', parAlert),
+              _envTile('VPD', '${vpd.toStringAsFixed(2)} kPa', vpdAlert),
+              _envTile('Soil Temp', '${soilTemp.toStringAsFixed(1)}°C', soilTempAlert),
+              _envTile('Soil N', '${soilN.toStringAsFixed(0)} ppm', soilNAlert),
+              _envTile('Soil EC', '${soilEC.toStringAsFixed(2)} mS', soilECAlert),
             ],
           ),
         ],
@@ -1492,28 +1572,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _envTile(String label, String value, Color? alert) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: C.bg,
-        borderRadius: BorderRadius.circular(6),
-        border: alert != null
-            ? Border.all(color: alert.withValues(alpha: 0.4))
-            : null,
+        color: alert != null
+            ? alert.withValues(alpha: 0.08)
+            : Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: alert != null
+              ? alert.withValues(alpha: 0.30)
+              : Colors.white.withValues(alpha: 0.07),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(label,
-              style: GoogleFonts.outfit(
-                  color: C.textMuted,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w400)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Flexible(
+                child: Text(label,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.outfit(
+                        color: C.textMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w400)),
+              ),
+              if (alert != null)
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration:
+                      BoxDecoration(color: alert, shape: BoxShape.circle),
+                ),
+            ],
+          ),
+          const SizedBox(height: 2),
           Text(
             value,
             style: GoogleFonts.outfit(
               fontWeight: FontWeight.w700,
-              fontSize: 19,
+              fontSize: 17,
               color: alert ?? C.textPrimary,
             ),
           ),
@@ -1525,6 +1625,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildHistoryPanel() {
     if (history.isEmpty) {
       return Panel(
+        glass: true,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: const [
@@ -1540,6 +1641,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final slice = history.sublist(max(0, history.length - n));
 
     return Panel(
+      glass: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1626,6 +1728,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     return Panel(
+      glass: true,
       accentLeft: C.info,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1656,6 +1759,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildActionsPanel() {
     return Panel(
+      glass: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1726,6 +1830,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Only use step sizes allowed by the backend [1,2,3,6,12,24]
     const presets = [(1, '1h'), (2, '2h'), (3, '3h'), (6, '6h'), (12, '12h'), (24, '1d')];
     return Panel(
+      glass: true,
       accentLeft: C.info,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1761,10 +1866,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildControlPanel() {
     final isAlive = _b('is_alive');
     final deathReason = simulationState?['death_reason'] as String?;
-    // Simulation ended when we have state but it is no longer running
-    final ended = simulationState != null;
+    // Simulation ended when we have state AND it is no longer actively running
+    final ended = simulationState != null && !simulationRunning;
 
     return Panel(
+      glass: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

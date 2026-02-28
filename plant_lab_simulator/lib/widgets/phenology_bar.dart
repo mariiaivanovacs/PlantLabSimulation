@@ -11,19 +11,32 @@ class PhenologyBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentIndex = stages.indexOf(stage);
+    final isDead = stage == 'dead';
 
     return Row(
       children: stages.map((s) {
         final i = stages.indexOf(s);
         final active = i <= currentIndex;
+        final segmentColor = active
+            ? (isDead ? C.danger : C.green)
+            : C.border;
 
         return Expanded(
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 2),
-            height: 8,
+            height: 10,
             decoration: BoxDecoration(
-              color: active ? C.green : C.border,
-              borderRadius: BorderRadius.circular(4),
+              color: segmentColor,
+              borderRadius: BorderRadius.circular(5),
+              boxShadow: active
+                  ? [
+                      BoxShadow(
+                        color: segmentColor.withValues(alpha: 0.65),
+                        blurRadius: 8,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
             ),
           ),
         );

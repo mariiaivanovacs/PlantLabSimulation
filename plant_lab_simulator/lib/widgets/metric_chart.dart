@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../theme.dart';
 
 /// A line chart widget that draws multiple named series with axis labels and legend.
@@ -25,7 +26,7 @@ class MetricChart extends StatelessWidget {
         height: height,
         child: Center(
           child: Text('No data for $title',
-              style: const TextStyle(color: C.textMuted, fontSize: 12)),
+              style: GoogleFonts.outfit(color: C.textMuted, fontSize: 12)),
         ),
       );
     }
@@ -54,9 +55,17 @@ class MetricChart extends StatelessWidget {
       children: [
         // Title
         Text(title,
-            style: const TextStyle(
-                color: C.green, fontSize: 13, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 4),
+            style: GoogleFonts.outfit(
+                color: C.green,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                shadows: [
+                  Shadow(
+                    color: C.green.withValues(alpha: 0.5),
+                    blurRadius: 10,
+                  ),
+                ])),
+        const SizedBox(height: 8),
         // Legend
         Wrap(
           spacing: 12,
@@ -66,19 +75,20 @@ class MetricChart extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                          width: 10, height: 3,
+                          width: 10,
+                          height: 3,
                           decoration: BoxDecoration(
                               color: s.color,
                               borderRadius: BorderRadius.circular(1))),
                       const SizedBox(width: 4),
                       Text(s.label,
-                          style: const TextStyle(
+                          style: GoogleFonts.outfit(
                               color: C.textMuted, fontSize: 10)),
                     ],
                   ))
               .toList(),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         // Chart area with Y-axis labels
         SizedBox(
           height: height,

@@ -569,7 +569,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
           Text(
             'My Garden',
             style: GoogleFonts.outfit(
-              fontSize: 13,
+              fontSize: 25,
               fontWeight: FontWeight.w700,
               color: C.textPrimary,
               letterSpacing: 1.2,
@@ -593,7 +593,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
               child: Text(
                 'FREE',
                 style: GoogleFonts.outfit(
-                  fontSize: 9,
+                  fontSize: 14,
                   fontWeight: FontWeight.w800,
                   color: C.warn,
                   letterSpacing: 1.0,
@@ -632,7 +632,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
                     Text(
                       'MY PLANTS',
                       style: GoogleFonts.outfit(
-                        fontSize: 9,
+                        fontSize: 14,
                         color: C.textMuted,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.8,
@@ -644,7 +644,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
                           ? '${_plants.length}'
                           : '${_plants.length} / $_kFreePlanLimit',
                       style:
-                          const TextStyle(fontSize: 11, color: C.textDim),
+                          const TextStyle(fontSize: 16, color: C.textDim),
                     ),
                   ],
                 ),
@@ -661,7 +661,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
                           p.plantImagePath,
                           fit: BoxFit.contain,
                           errorBuilder: (_, __, ___) =>
-                              Text(p.emoji, style: const TextStyle(fontSize: 16)),
+                              Text(p.emoji, style: const TextStyle(fontSize: 21)),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -700,7 +700,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
                       'Add new plant',
                       style: TextStyle(
                           color: _atPlantLimit ? C.textMuted : C.green,
-                          fontSize: 13),
+                          fontSize: 18),
                     ),
                     if (_atPlantLimit) ...[
                       const Spacer(),
@@ -714,7 +714,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
                         child: Text(
                           'PRO',
                           style: GoogleFonts.outfit(
-                              fontSize: 8,
+                              fontSize: 13,
                               color: C.warn,
                               fontWeight: FontWeight.w800),
                         ),
@@ -731,7 +731,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
                   SizedBox(width: 10),
                   Text('Sign out',
                       style:
-                          TextStyle(color: C.textMuted, fontSize: 13)),
+                          TextStyle(color: C.textMuted, fontSize: 18)),
                 ]),
               ),
             ],
@@ -798,7 +798,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
               height: 45,
               fit: BoxFit.contain,
               errorBuilder: (_, __, ___) =>
-                  Text(plant.emoji, style: const TextStyle(fontSize: 26)),
+                  Text(plant.emoji, style: const TextStyle(fontSize: 31)),
             ),
           ),
           const SizedBox(width: 14),
@@ -808,13 +808,13 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
               children: [
                 Text(plant.name,
                     style: GoogleFonts.outfit(
-                        fontSize: 17,
+                        fontSize: 22,
                         fontWeight: FontWeight.w700,
                         color: C.textPrimary)),
                 Text(
                   '${plant.identifiedAs[0].toUpperCase()}${plant.identifiedAs.substring(1)} · $ageLabel',
                   style: GoogleFonts.outfit(
-                      color: C.textMuted, fontSize: 12),
+                      color: C.textMuted, fontSize: 17),
                 ),
               ],
             ),
@@ -841,13 +841,13 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
           Text(
             '$score',
             style: GoogleFonts.outfit(
-                fontSize: 17,
+                fontSize: 22,
                 fontWeight: FontWeight.w800,
                 color: color),
           ),
           Text('/ 100',
               style: TextStyle(
-                  fontSize: 9, color: color.withOpacity(0.7))),
+                  fontSize: 14, color: color.withOpacity(0.7))),
         ],
       ),
     ).animate().scale(
@@ -877,7 +877,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
           Text(
             'LAST WATERED',
             style: GoogleFonts.outfit(
-                fontSize: 9,
+                fontSize: 14,
                 color: C.textMuted,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 1.0),
@@ -890,7 +890,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
               return ChoiceChip(
                 label: Text(opt.label,
                     style: GoogleFonts.outfit(
-                        fontSize: 12,
+                        fontSize: 17,
                         color: selected ? Colors.white : C.textMuted)),
                 selected: selected,
                 onSelected: (_) => setState(() {
@@ -960,13 +960,13 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
                     Text(
                       'Tap to upload a photo of your plant',
                       style: GoogleFonts.outfit(
-                          color: C.textMuted, fontSize: 13),
+                          color: C.textMuted, fontSize: 18),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       'JPG · PNG · WEBP',
                       style: GoogleFonts.outfit(
-                          color: C.textDim, fontSize: 11),
+                          color: C.textDim, fontSize: 16),
                     ),
                   ],
                 ),
@@ -993,7 +993,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
           _checking ? 'Analysing…' : 'Analyse Plant',
           style: GoogleFonts.outfit(
               fontWeight: FontWeight.w700,
-              fontSize: 15,
+              fontSize: 20,
               color: Colors.white),
         ),
         style: ElevatedButton.styleFrom(
@@ -1036,7 +1036,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
                     child: Text(
                       '$score',
                       style: GoogleFonts.outfit(
-                          fontSize: 15,
+                          fontSize: 20,
                           fontWeight: FontWeight.w800,
                           color: scoreColor),
                     ),
@@ -1049,7 +1049,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
                     children: [
                       Text(label,
                           style: GoogleFonts.outfit(
-                              fontSize: 16,
+                              fontSize: 21,
                               fontWeight: FontWeight.w700,
                               color: scoreColor)),
                       Text(
@@ -1057,7 +1057,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
                             ? 'Latest analysis · $timeLabel'
                             : timeLabel,
                         style: GoogleFonts.outfit(
-                            fontSize: 12, color: C.textMuted),
+                            fontSize: 17, color: C.textMuted),
                       ),
                     ],
                   ),
@@ -1092,7 +1092,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
               const SizedBox(height: 8),
               Text(check.healthSummary,
                   style: GoogleFonts.outfit(
-                      fontSize: 13,
+                      fontSize: 18,
                       height: 1.6,
                       color: C.textPrimary)),
             ],
@@ -1114,7 +1114,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
                       Expanded(
                         child: Text(action,
                             style: GoogleFonts.outfit(
-                                fontSize: 13,
+                                fontSize: 18,
                                 color: C.textPrimary,
                                 height: 1.4)),
                       ),
@@ -1145,7 +1145,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
           width: 110,
           child: Text(label,
               style: GoogleFonts.outfit(
-                  fontSize: 12, color: C.textMuted)),
+                  fontSize: 17, color: C.textMuted)),
         ),
         Expanded(
           child: ClipRRect(
@@ -1164,7 +1164,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
           child: Text(cat,
               textAlign: TextAlign.right,
               style: GoogleFonts.outfit(
-                  fontSize: 11,
+                  fontSize: 16,
                   color: catColor,
                   fontWeight: FontWeight.w600)),
         ),
@@ -1189,7 +1189,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
           const SizedBox(width: 4),
           Text(text,
               style: GoogleFonts.outfit(
-                  fontSize: 11,
+                  fontSize: 16,
                   color: color,
                   fontWeight: FontWeight.w500)),
         ],
@@ -1203,7 +1203,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
     return Text(
       text,
       style: GoogleFonts.outfit(
-        fontSize: 9,
+        fontSize: 14,
         color: C.textMuted,
         fontWeight: FontWeight.w700,
         letterSpacing: 1.2,
@@ -1225,7 +1225,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
             Text(
               'HISTORY',
               style: GoogleFonts.outfit(
-                  fontSize: 10,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
                   color: C.textPrimary,
                   letterSpacing: 1.0),
@@ -1242,24 +1242,27 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
         ),
         const SizedBox(height: 14),
         if (!_loadingHistory && historyToShow.isEmpty)
-          _glassCard(
-            padding: const EdgeInsets.symmetric(vertical: 28),
-            child: Column(
-              children: [
-                const Text('📊', style: TextStyle(fontSize: 32)),
-                const SizedBox(height: 10),
-                Text('No previous checks yet',
-                    style: GoogleFonts.outfit(
-                        color: C.textMuted,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500)),
-                const SizedBox(height: 4),
-                Text(
-                  'Upload a photo and analyse your plant to get started',
-                  style: GoogleFonts.outfit(
-                      color: C.textDim, fontSize: 12),
-                ),
-              ],
+          SizedBox(
+            width: double.infinity,
+            child: _glassCard(
+              padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+              child: Column(
+                children: [
+                  const Text('📊', style: TextStyle(fontSize: 28)),
+                  const SizedBox(height: 10),
+                  Text('No previous checks yet',
+                      style: GoogleFonts.outfit(
+                          color: C.textMuted,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Upload a photo and analyse your plant to get started',
+                    style: GoogleFonts.outfit(color: C.textDim, fontSize: 12),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
             ),
           )
         else
@@ -1304,13 +1307,13 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
                 children: [
                   Text('Upgrade to Plant Pro',
                       style: GoogleFonts.outfit(
-                          fontSize: 13,
+                          fontSize: 18,
                           fontWeight: FontWeight.w700,
                           color: C.textPrimary)),
                   const SizedBox(height: 2),
                   Text('Unlimited plants · Advanced AI analysis',
                       style: GoogleFonts.outfit(
-                          fontSize: 11, color: C.textMuted)),
+                          fontSize: 16, color: C.textMuted)),
                 ],
               ),
             ),
@@ -1333,7 +1336,7 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
                     child: Text('Upgrade',
                         style: GoogleFonts.outfit(
                             color: Colors.white,
-                            fontSize: 12,
+                            fontSize: 17,
                             fontWeight: FontWeight.w700)),
                   ),
           ],
@@ -1365,7 +1368,8 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
           Expanded(
               child: Text(msg,
                   style: GoogleFonts.outfit(
-                      color: C.danger, fontSize: 13))),
+                      color: C.danger, fontSize: 18))
+          ),
         ],
       ),
     );

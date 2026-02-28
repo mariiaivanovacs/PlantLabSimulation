@@ -28,8 +28,22 @@ class PlantLabApp extends StatelessWidget {
   }
 }
 
-class _AuthGate extends StatelessWidget {
+// _AuthGate is StatefulWidget so we can cache the getIdToken() future.
+// Without caching, every authStateChanges emission (e.g. updateDisplayName
+// during registration fires a second event) creates a NEW FutureBuilder
+// that resets to ConnectionState.waiting — causing the redirect to be
+// skipped or the loading screen to flash back after ModeSelectionScreen
+// has already rendered.
+class _AuthGate extends StatefulWidget {
   const _AuthGate();
+
+  @override
+  State<_AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<_AuthGate> {
+  Future<String?>? _tokenFuture;
+  String? _cachedUid;
 
   @override
   Widget build(BuildContext context) {
@@ -42,12 +56,19 @@ class _AuthGate extends StatelessWidget {
         final user = snapshot.data;
         if (user == null) {
           ApiClient().setToken(null);
+          _tokenFuture = null;
+          _cachedUid = null;
           return const AuthScreen();
         }
-        // Await the Firebase ID token BEFORE routing — prevents a race where
-        // DashboardScreen calls getProfile() before the token is stored.
+        // Only re-fetch the token when the user identity changes (new login).
+        // Profile updates (updateDisplayName) re-emit the same uid — we ignore
+        // those so the FutureBuilder is not recreated and the redirect holds.
+        if (_cachedUid != user.uid) {
+          _cachedUid = user.uid;
+          _tokenFuture = user.getIdToken();
+        }
         return FutureBuilder<String?>(
-          future: user.getIdToken(),
+          future: _tokenFuture,
           builder: (context, tokenSnap) {
             if (tokenSnap.connectionState == ConnectionState.waiting) {
               return _loadingScaffold();

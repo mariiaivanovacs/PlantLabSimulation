@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../theme.dart';
 import '../services/api_client.dart';
 import 'shared.dart';
@@ -45,13 +46,26 @@ class ActionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-          const SizedBox(height: 4),
-          Text(description, style: const TextStyle(color: C.textMuted, fontSize: 15)),
+          Text(label,
+              style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 17,
+                  color: C.textPrimary,
+                  shadows: [
+                    Shadow(
+                      color: C.green.withValues(alpha: 0.4),
+                      blurRadius: 10,
+                    ),
+                  ])),
           const SizedBox(height: 8),
+          Text(description,
+              style: GoogleFonts.outfit(color: C.textMuted, fontSize: 14)),
+          const SizedBox(height: 16),
           ElevatedButton(
             onPressed: () => _execute(context),
-            child: const Text("Execute", style: TextStyle(fontSize: 15)),
+            child: Text("Execute",
+                style: GoogleFonts.outfit(
+                    fontSize: 15, fontWeight: FontWeight.w600)),
           )
         ],
       ),

@@ -76,6 +76,17 @@ class _SparkPainter extends CustomPainter {
         ).createShader(Rect.fromLTWH(0, 0, size.width, size.height)),
     );
 
+    // Glow underlay
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color.withValues(alpha: 0.35)
+        ..strokeWidth = 5
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    );
+
     // Line
     canvas.drawPath(
       path,

@@ -1,4 +1,7 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../theme.dart';
 
 // ── Animated cyber gradient background ───────────────────────────────────────
@@ -57,6 +60,7 @@ class _AnimatedCyberBackgroundState extends State<AnimatedCyberBackground>
           ),
           child: Stack(
             children: [
+              // Primary teal orb – sweeps left-right
               Align(
                 alignment: Alignment(sweepX, -0.3),
                 child: Container(
@@ -66,7 +70,24 @@ class _AnimatedCyberBackgroundState extends State<AnimatedCyberBackground>
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        Colors.tealAccent.withValues(alpha: 0.15),
+                        Colors.tealAccent.withValues(alpha: 0.12),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              // Secondary green orb – drifts in the opposite direction
+              Align(
+                alignment: Alignment(-sweepX * 0.6, 0.55),
+                child: Container(
+                  width: 320,
+                  height: 320,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        C.green.withValues(alpha: 0.08),
                         Colors.transparent,
                       ],
                     ),
@@ -111,34 +132,68 @@ class AppLogoImage extends StatelessWidget {
 class Panel extends StatelessWidget {
   final Widget child;
   final Color? accentLeft;
+  /// When true, renders with BackdropFilter blur + translucent glass surface.
+  final bool glass;
 
-  const Panel({super.key, required this.child, this.accentLeft});
+  const Panel({super.key, required this.child, this.accentLeft, this.glass = true});
 
   @override
   Widget build(BuildContext context) {
+    const br = BorderRadius.all(Radius.circular(14));
+
+    final innerContent = accentLeft != null
+        ? Row(
+            children: [
+              Container(
+                width: 4,
+                decoration: BoxDecoration(
+                  color: accentLeft,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(14),
+                    bottomLeft: Radius.circular(14),
+                  ),
+                ),
+              ),
+              Expanded(child: Padding(padding: const EdgeInsets.all(14), child: child)),
+            ],
+          )
+        : Padding(padding: const EdgeInsets.all(14), child: child);
+
+    if (glass) {
+      return ClipRRect(
+        borderRadius: br,
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: br,
+              border: Border.all(
+                color: accentLeft != null
+                    ? accentLeft!.withValues(alpha: 0.28)
+                    : C.green.withValues(alpha: 0.12),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: (accentLeft ?? C.green).withValues(alpha: 0.10),
+                  blurRadius: 24,
+                  spreadRadius: -4,
+                ),
+              ],
+            ),
+            child: innerContent,
+          ),
+        ),
+      );
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: C.panel,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: br,
         border: Border.all(color: C.border, width: 1),
       ),
-      child: accentLeft != null
-          ? Row(
-              children: [
-                Container(
-                  width: 4,
-                  decoration: BoxDecoration(
-                    color: accentLeft,
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(14),
-                      bottomLeft: Radius.circular(14),
-                    ),
-                  ),
-                ),
-                Expanded(child: Padding(padding: const EdgeInsets.all(14), child: child)),
-              ],
-            )
-          : Padding(padding: const EdgeInsets.all(14), child: child),
+      child: innerContent,
     );
   }
 }
@@ -153,12 +208,25 @@ class PanelTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 16),
       child: Row(
         children: [
-          Text(text,
-              style: const TextStyle(
-                  color: C.green, fontSize: 22, fontWeight: FontWeight.w700)),
+          Flexible(
+            child: Text(
+              text,
+              style: GoogleFonts.outfit(
+                color: C.green,
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                shadows: [
+                  Shadow(
+                    color: C.green.withValues(alpha: 0.55),
+                    blurRadius: 14,
+                  ),
+                ],
+              ),
+            ),
+          ),
           if (badge != null) ...[
             const SizedBox(width: 8),
             Container(
@@ -166,9 +234,15 @@ class PanelTitle extends StatelessWidget {
               decoration: BoxDecoration(
                 color: (badgeColor ?? C.warn).withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(4),
+                boxShadow: [
+                  BoxShadow(
+                    color: (badgeColor ?? C.warn).withValues(alpha: 0.25),
+                    blurRadius: 8,
+                  ),
+                ],
               ),
               child: Text(badge!,
-                  style: TextStyle(
+                  style: GoogleFonts.outfit(
                       color: badgeColor ?? C.warn,
                       fontSize: 12,
                       fontWeight: FontWeight.w700)),
@@ -192,18 +266,34 @@ class MetricTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: C.bg,
+        color: warn ? C.warn.withValues(alpha: 0.07) : C.bg,
         borderRadius: BorderRadius.circular(8),
-        border: warn ? const Border(left: BorderSide(color: C.warn, width: 3)) : null,
+        border: Border(
+          left: BorderSide(
+            color: warn ? C.warn : Colors.transparent,
+            width: 3,
+          ),
+        ),
+        boxShadow: warn
+            ? [
+                BoxShadow(
+                  color: C.warn.withValues(alpha: 0.18),
+                  blurRadius: 12,
+                  spreadRadius: -2,
+                ),
+              ]
+            : null,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Flexible(
             child: Text(label,
-                style: const TextStyle(color: C.textMuted, fontSize: 17),
+                style: GoogleFonts.outfit(
+                    color: warn ? C.warn.withValues(alpha: 0.85) : C.textMuted,
+                    fontSize: 15),
                 overflow: TextOverflow.ellipsis),
           ),
           const SizedBox(width: 8),
@@ -211,14 +301,23 @@ class MetricTile extends StatelessWidget {
             TextSpan(children: [
               TextSpan(
                   text: value,
-                  style: TextStyle(
+                  style: GoogleFonts.outfit(
                       fontWeight: FontWeight.w700,
                       fontSize: 21,
-                      color: warn ? C.warn : C.textPrimary)),
+                      color: warn ? C.warn : C.textPrimary,
+                      shadows: warn
+                          ? [
+                              Shadow(
+                                color: C.warn.withValues(alpha: 0.45),
+                                blurRadius: 8,
+                              ),
+                            ]
+                          : null)),
               if (unit != null)
                 TextSpan(
                     text: ' $unit',
-                    style: const TextStyle(color: C.textMuted, fontSize: 16)),
+                    style: GoogleFonts.outfit(
+                        color: C.textMuted, fontSize: 14)),
             ]),
           ),
         ],

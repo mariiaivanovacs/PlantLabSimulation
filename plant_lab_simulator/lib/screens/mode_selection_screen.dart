@@ -1,4 +1,5 @@
 import 'dart:ui' as ui;
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -168,8 +169,25 @@ class _ModeCard extends StatefulWidget {
 class _ModeCardState extends State<_ModeCard> {
   bool _hovered = false;
 
+  static const Duration _hoverAnimDuration = Duration(milliseconds: 220);
+
   @override
   Widget build(BuildContext context) {
+    // Responsive: auto-detect "compact" (phone) layout and scale sizes
+    final width = MediaQuery.of(context).size.width;
+    final isCompact = width < 420; // tweak threshold as needed
+
+    final padding = isCompact ? 16.0 : 24.0;
+    final iconSize = isCompact ? 48.0 : 52.0; // glyph size (foreground)
+    final titleSize = isCompact ? 20.0 : 18.0; // text a bit bigger on mobile
+    final subtitleSize = isCompact ? 14.0 : 13.0;
+
+    // Hover-driven transforms
+    final double cardScale = _hovered ? 1.025 : 1.0;
+    final double bgIconScale = _hovered ? 1.12 : 1.0;
+    final double bgIconOpacity = _hovered ? 0.22 : 0.16;
+    final double bgDarken = _hovered ? 0.45 : 0.36;
+
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
@@ -177,87 +195,217 @@ class _ModeCardState extends State<_ModeCard> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedScale(
-          scale: _hovered ? 1.025 : 1.0,
-          duration: const Duration(milliseconds: 180),
+          scale: cardScale,
+          duration: _hoverAnimDuration,
           curve: Curves.easeOutCubic,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: _hovered
-                      ? Colors.white.withValues(alpha: 0.10)
-                      : Colors.white.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: _hovered
-                        ? widget.iconColor.withValues(alpha: 0.5)
-                        : Colors.white.withValues(alpha: 0.10),
-                    width: 1,
-                  ),
-                  boxShadow: _hovered
-                      ? [
-                          BoxShadow(
-                            color: widget.iconColor.withValues(alpha: 0.22),
-                            blurRadius: 28,
-                            spreadRadius: 0,
-                          ),
-                        ]
-                      : [],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(widget.icon, color: widget.iconColor, size: 36),
-                    const SizedBox(height: 16),
-                    Text(
-                      widget.title,
-                      style: GoogleFonts.outfit(
-                        color: C.textPrimary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        shadows: [
-                          Shadow(
-                            color: widget.iconColor.withValues(alpha: 0.55),
-                            blurRadius: 14,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      widget.subtitle,
-                      style: GoogleFonts.outfit(
-                        color: C.textMuted,
-                        fontSize: 13,
-                        height: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Text(
-                          'Open',
-                          style: GoogleFonts.outfit(
-                            color: widget.iconColor,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
+            child: Stack(
+              children: [
+                // Background blurry / darkened icon (behind content)
+                Positioned.fill(
+                  child: AnimatedOpacity(
+                    duration: _hoverAnimDuration,
+                    opacity: bgIconOpacity,
+                    child: Align(
+                      alignment: Alignment.topRight,
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                            right: isCompact ? 8 : 16, top: isCompact ? 4 : 8),
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 1.0, end: bgIconScale),
+                          duration: _hoverAnimDuration,
+                          curve: Curves.easeOut,
+                          builder: (context, scaleFactor, child) {
+                            return Transform.scale(
+                              scale: scaleFactor,
+                              origin: Offset(20, 0),
+                              child: Icon(
+                                widget.icon,
+                                size: (isCompact ? 120 : 160) * scaleFactor,
+                                color: widget.iconColor.withOpacity(0.18),
+                              ),
+                            );
+                          },
                         ),
-                        const SizedBox(width: 4),
-                        Icon(Icons.arrow_forward,
-                            color: widget.iconColor, size: 14),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Frosted glass + content
+                BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  child: AnimatedContainer(
+                    duration: _hoverAnimDuration,
+                    padding: EdgeInsets.all(padding),
+                    constraints:
+                        BoxConstraints(minHeight: isCompact ? 110 : 160),
+                    decoration: BoxDecoration(
+                      color: _hovered
+                          ? Colors.white.withValues(alpha: 0.10)
+                          : Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: _hovered
+                            ? widget.iconColor.withValues(alpha: 0.5)
+                            : Colors.white.withValues(alpha: 0.10),
+                        width: 1,
+                      ),
+                      boxShadow: _hovered
+                          ? [
+                              BoxShadow(
+                                color: widget.iconColor.withValues(alpha: 0.22),
+                                blurRadius: 28,
+                                spreadRadius: 0,
+                              ),
+                            ]
+                          : [],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Foreground small glyph (keeps original look)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Small circular icon background to contrast text
+                            Container(
+                              width: iconSize,
+                              height: iconSize,
+                              decoration: BoxDecoration(
+                                color: widget.iconColor.withValues(alpha: 0.12),
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color:
+                                        widget.iconColor.withValues(alpha: 0.04),
+                                    blurRadius: 6,
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                widget.icon,
+                                color: widget.iconColor,
+                                size: iconSize * 0.52,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            // Title + subtitle stacked
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    widget.title,
+                                    style: GoogleFonts.outfit(
+                                      color: C.textPrimary,
+                                      fontSize: titleSize,
+                                      fontWeight: FontWeight.w700,
+                                      shadows: [
+                                        Shadow(
+                                          color: widget.iconColor
+                                              .withValues(alpha: 0.45),
+                                          blurRadius: 12,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    widget.subtitle,
+                                    style: GoogleFonts.outfit(
+                                      color: C.textMuted,
+                                      fontSize: subtitleSize,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Text(
+                              'Open',
+                              style: GoogleFonts.outfit(
+                                color: widget.iconColor,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(Icons.arrow_forward,
+                                color: widget.iconColor, size: 14),
+                          ],
+                        ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Image-based glyph widget for mode selection.
+/// Maps `kind` to asset paths: 'enterprise' -> gear icon, 'home' -> plant icon.
+/// If `kind` contains '/', treats it as a direct asset path.
+class _ModeGlyph extends StatelessWidget {
+  final double size;
+  final String kind; // 'enterprise', 'home', or direct asset path
+
+  const _ModeGlyph({
+    required this.size,
+    required this.kind,
+  });
+
+  /// Resolve asset path from kind name or direct path.
+  static String assetForKind(String kind) {
+    if (kind.contains('/')) {
+      // Direct asset path provided (e.g., 'assets/tomato.png')
+      return kind;
+    }
+    final lower = kind.toLowerCase();
+    if (lower.contains('enterprise')) return 'assets/enterprise.png';
+    if (lower.contains('home')) return 'assets/home_plant.png';
+    return 'assets/logo.png'; // fallback
+  }
+
+  String _assetForKind() => assetForKind(kind);
+
+  @override
+  Widget build(BuildContext context) {
+    final asset = _assetForKind();
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Image.asset(
+        asset,
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        errorBuilder: (ctx, err, stack) {
+          // Fallback icon if asset missing
+          return Container(
+            width: size,
+            height: size,
+            alignment: Alignment.center,
+            child: Icon(
+              Icons.image_not_supported,
+              size: size * 0.6,
+              color: Colors.grey,
+            ),
+          );
+        },
       ),
     );
   }
