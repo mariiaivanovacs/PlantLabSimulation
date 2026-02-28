@@ -194,12 +194,13 @@ class _HomeHealthScreenState extends State<HomeHealthScreen>
     final file = input.files?.first;
     if (file == null) return;
     final reader = html.FileReader();
-    reader.readAsArrayBuffer(file);
+    // readAsDataUrl gives "data:<mime>;base64,<b64>" — no ByteBuffer casting needed.
+    reader.readAsDataUrl(file);
     await reader.onLoad.first;
-    final bytes = Uint8List.fromList(reader.result as List<int>);
+    final b64 = (reader.result as String).split(',').last;
     setState(() {
-      _imageBytes = bytes;
-      _imageB64 = base64Encode(bytes);
+      _imageBytes = base64Decode(b64);
+      _imageB64 = b64;
       _checkError = null;
       _latestResult = null;
     });
