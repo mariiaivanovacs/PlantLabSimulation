@@ -1,5 +1,9 @@
 # PlantLab Simulation
 
+Can test via: https://plantlab-simulator-115544415132.us-central1.run.app
+
+View Preview: https://youtu.be/owrrNu0Fdq8
+
 A full-stack plant care app: Flutter web frontend + Flask/Python backend, deployed on Google Cloud Run.
 
 Users add real plants, upload photos, and get AI-powered health analysis (Gemini vision model + XGBoost stress prediction). The backend also runs a physics-based plant growth simulation with a multi-agent monitoring system.
