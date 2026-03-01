@@ -1,7 +1,5 @@
 # Plant Simulator
 
-Can test via:https://plantlab-simulator-115544415132.us-central1.run.app/
-
 Advanced plant growth simulation with Flask API and multi-agent control system.
 
 ## 🚀 Quick Start
