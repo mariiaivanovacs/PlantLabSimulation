@@ -90,40 +90,89 @@ def calculate_temperature_response_beta(
         return 0.0
 
 
+# def calculate_thermal_time(
+#     air_temp: float,
+#     soil_temp: float,
+#     T_base: float,
+#     current_thermal_time: float
+# ) -> float:
+#     """
+#     Calculate accumulated thermal time (Growing Degree Hours)
+
+#     Thermal time is used to track phenological development.
+#     GDD accumulates hourly based on average temperature.
+
+#     GDD = max(0, (air_temp + soil_temp)/2 - T_base)
+
+#     Args:
+#         air_temp: Air temperature (C)
+#         soil_temp: Soil temperature (C)
+#         T_base: Base temperature (C) - no development below this
+#         current_thermal_time: Current accumulated thermal time (C*h)
+
+#     Returns:
+#         Updated thermal time (C*h)
+#     """
+#     # Average of air and soil temperature
+#     T_avg = (air_temp + soil_temp) / 2
+
+#     # GDD for this hour (only accumulates above base temperature)
+#     GDD_hour = max(0, T_avg - T_base)
+
+#     # Accumulate
+#     new_thermal_time = current_thermal_time + GDD_hour
+
+#     return new_thermal_time
+
+
+
 def calculate_thermal_time(
     air_temp: float,
     soil_temp: float,
-    T_base: float,
-    current_thermal_time: float
+    current_thermal_time: float,
+    T_base: float = 5.0,
+    T_opt: float = 25.0,
+    air_weight: float = 0.7,
+    soil_weight: float = 0.3
 ) -> float:
     """
-    Calculate accumulated thermal time (Growing Degree Hours)
+    Calculate accumulated thermal time (Growing Degree Hours) for crop development.
 
-    Thermal time is used to track phenological development.
-    GDD accumulates hourly based on average temperature.
+    Thermal time tracks phenological development.
+    GDD accumulates hourly based on temperature, with optional air/soil weighting 
+    and heat cap for upper temperature limits.
 
-    GDD = max(0, (air_temp + soil_temp)/2 - T_base)
+    Formula:
+        T_avg = air_weight * air_temp + soil_weight * soil_temp
+        T_avg_capped = min(T_avg, T_opt)
+        GDD_hour = max(0, T_avg_capped - T_base)
+        new_thermal_time = current_thermal_time + GDD_hour
 
     Args:
-        air_temp: Air temperature (C)
-        soil_temp: Soil temperature (C)
-        T_base: Base temperature (C) - no development below this
-        current_thermal_time: Current accumulated thermal time (C*h)
+        air_temp (float): Air temperature in °C
+        soil_temp (float): Soil temperature in °C
+        current_thermal_time (float): Current accumulated thermal time (°C·h)
+        T_base (float, optional): Base temperature below which no development occurs. Default 5°C for lettuce
+        T_opt (float, optional): Optimal temperature cap for development. Above this, growth slows. Default 25°C for lettuce
+        air_weight (float, optional): Weight of air temperature in averaging (0-1). Default 0.7
+        soil_weight (float, optional): Weight of soil temperature in averaging (0-1). Default 0.3
 
     Returns:
-        Updated thermal time (C*h)
+        float: Updated thermal time (°C·h)
     """
-    # Average of air and soil temperature
-    T_avg = (air_temp + soil_temp) / 2
+    # Weighted average temperature
+    T_avg = air_weight * air_temp + soil_weight * soil_temp
 
-    # GDD for this hour (only accumulates above base temperature)
-    GDD_hour = max(0, T_avg - T_base)
+    # Apply upper temperature cap
+    T_capped = min(T_avg, T_opt)
 
-    # Accumulate
+    # Hourly GDD
+    GDD_hour = max(0, T_capped - T_base)
+
+    # Accumulate thermal time
     new_thermal_time = current_thermal_time + GDD_hour
 
     return new_thermal_time
-
 
 def calculate_temperature_stress(
     air_temp: float,

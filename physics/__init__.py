@@ -24,7 +24,11 @@ from .growth import (
     update_leaf_area,
     calculate_nutrient_factor,
     update_biomass,
-    decay_biomass
+    decay_biomass,
+    is_daytime,
+    get_light_factor,
+    DAY_START_HOUR,
+    DAY_END_HOUR
 )
 from .damage import (
     calculate_damage_rate,
@@ -74,6 +78,10 @@ __all__ = [
     'calculate_nutrient_factor',
     'update_biomass',
     'decay_biomass',
+    'is_daytime',
+    'get_light_factor',
+    'DAY_START_HOUR',
+    'DAY_END_HOUR',
     # Damage
     'calculate_damage_rate',
     'apply_damage',

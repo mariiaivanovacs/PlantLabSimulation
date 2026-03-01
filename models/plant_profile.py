@@ -3,7 +3,14 @@ Plant Profile Model
 Defines species-specific characteristics and parameters
 """
 from typing import Dict, Any, Optional
+from enum import Enum
 from pydantic import BaseModel, Field
+
+
+class GrowthStrategy(str, Enum):
+    """Plant growth allocation strategy"""
+    LEAF_FIRST = "leaf_first"  # Prioritize leaf biomass (e.g., lettuce)
+    STRUCTURE_FIRST = "structure_first"  # Balanced allocation to stem/root (e.g., tomato)
 
 
 class TemperatureResponse(BaseModel):
@@ -11,7 +18,9 @@ class TemperatureResponse(BaseModel):
     T_min: float = Field(description="Minimum temperature for growth (°C)")
     T_opt: float = Field(description="Optimal temperature (°C)")
     T_max: float = Field(description="Maximum temperature for growth (°C)")
-    T_base: float = Field(description="Base temperature for thermal time (°C)")
+    T_base: float = Field(description="Base temperature for thermal time (°C)"),
+    air_weight: float = Field(default=0.7, description="Weight of air temperature in averaging (0-1)")
+    soil_weight: float = Field(default=0.3, description="Weight of soil temperature in averaging (0-1)")
 
 
 class WaterRequirements(BaseModel):
@@ -42,6 +51,24 @@ class GrowthParameters(BaseModel):
     optimal_PAR: float = Field(description="Optimal PAR (µmol/m²/s)", ge=0)
     PAR_saturation: float = Field(description="PAR saturation point", ge=0)
 
+    # Growth strategy and biomass allocation
+    growth_strategy: GrowthStrategy = Field(default=GrowthStrategy.STRUCTURE_FIRST, description="Biomass allocation strategy")
+
+    # Biomass partitioning fractions (early growth stage)
+    # These control how new biomass is allocated to different organs
+    leaf_fraction_early: float = Field(default=0.50, description="Fraction to leaves (early)", ge=0, le=1)
+    stem_fraction_early: float = Field(default=0.30, description="Fraction to stem (early)", ge=0, le=1)
+    root_fraction_early: float = Field(default=0.20, description="Fraction to roots (early)", ge=0, le=1)
+
+    # Biomass partitioning fractions (late growth stage)
+    leaf_fraction_late: float = Field(default=0.30, description="Fraction to leaves (late)", ge=0, le=1)
+    stem_fraction_late: float = Field(default=0.40, description="Fraction to stem (late)", ge=0, le=1)
+    root_fraction_late: float = Field(default=0.30, description="Fraction to roots (late)", ge=0, le=1)
+
+    # Specific Leaf Area (SLA) - converts leaf biomass to leaf area
+    # Higher SLA = thinner leaves, more area per gram
+    SLA: float = Field(default=0.020, description="Specific Leaf Area (m²/g leaf biomass)", ge=0)
+
 
 class PhenologyThresholds(BaseModel):
     """Thermal time requirements for stage transitions"""
@@ -50,7 +77,11 @@ class PhenologyThresholds(BaseModel):
     vegetative_to_flowering_GDD: float = Field(default=2000, description="°C·h")
     flowering_to_fruiting_GDD: float = Field(default=3500, description="°C·h")
     fruiting_to_mature_GDD: float = Field(default=5000, description="°C·h")
-    seed_to_seedling_biomass: float = Field(default=0.1, description="Minimum biomass (g)")
+    seed_to_seedling_biomass: float = Field(default=0.1, description="Minimum biomass (g)"),
+    seedling_to_vegetative_biomass: float = Field(default=0.1, description="Minimum biomass (g)")
+    vegetative_to_flowering_biomass: float = Field(default=0.1, description="Minimum biomass (g)")
+    flowering_to_fruiting_biomass: float = Field(default=0.1, description="Minimum biomass (g)")
+    fruiting_to_mature_biomass: float = Field(default=0.1, description="Minimum biomass (g)")
 
 
 class PlantProfile(BaseModel):
@@ -87,6 +118,7 @@ class PlantProfile(BaseModel):
     created_at: Optional[str] = Field(default=None)
     created_by: Optional[str] = Field(default="system")
     is_default: bool = Field(default=False)
+    boost_hours: int = Field(default=168, description="Hours to apply seedling boost")
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for Firebase storage"""
