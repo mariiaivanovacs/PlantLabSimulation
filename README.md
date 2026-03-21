@@ -8,10 +8,9 @@ A full-stack plant care app: Flutter web frontend + Flask/Python backend, deploy
 
 Users add real plants, upload photos, and get AI-powered health analysis (Gemini vision model + XGBoost stress prediction). The backend also runs a physics-based plant growth simulation with a multi-agent monitoring system.
 
-
-
 ---
-<img width="1000" height="666" alt="Stack Diagram" src="https://github.com/user-attachments/assets/300c572f-4854-41c5-a354-7ca59f067d0c" />
+
+<img width="1134" height="305" alt="Stack Diagram" src="https://github.com/user-attachments/assets/7297f399-d59b-46f1-ba96-cefb40aa28ff" />
 
 ## Stack
 
