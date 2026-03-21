@@ -11,7 +11,7 @@ Users add real plants, upload photos, and get AI-powered health analysis (Gemini
 
 
 ---
-<img width="1536" height="1024" alt="ChatGPT Image Feb 28, 2026 at 10_44_59 PM" src="https://github.com/user-attachments/assets/b5d38e43-6428-45bb-9c73-bf0a8851232b" />
+<img width="1000" height="666" alt="Stack Diagram" src="https://github.com/user-attachments/assets/300c572f-4854-41c5-a354-7ca59f067d0c" />
 
 ## Stack
 
