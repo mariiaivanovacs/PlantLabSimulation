@@ -8,7 +8,10 @@ A full-stack plant care app: Flutter web frontend + Flask/Python backend, deploy
 
 Users add real plants, upload photos, and get AI-powered health analysis (Gemini vision model + XGBoost stress prediction). The backend also runs a physics-based plant growth simulation with a multi-agent monitoring system.
 
+
+
 ---
+<img width="1536" height="1024" alt="ChatGPT Image Feb 28, 2026 at 10_44_59 PM" src="https://github.com/user-attachments/assets/b5d38e43-6428-45bb-9c73-bf0a8851232b" />
 
 ## Stack
 
@@ -24,6 +27,9 @@ Users add real plants, upload photos, and get AI-powered health analysis (Gemini
 | MQTT | Eclipse Mosquitto (optional IoT sensor integration) |
 
 ---
+
+![alt text]()
+
 
 ## Local development
 
@@ -141,6 +147,9 @@ PlantLabSimulation/
 ```
 
 ---
+
+<img width="984" height="553" alt="Screenshot 2026-02-28 at 9 15 51 PM" src="https://github.com/user-attachments/assets/05b76f1c-b005-4083-8f86-f099e21b99d9" />
+
 
 ## API reference
 
