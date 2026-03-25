@@ -1,8 +1,14 @@
 # PlantLab Simulation
 
-Can test via: https://plantlab-simulator-115544415132.us-central1.run.app
+## Can test via: 
+https://plantlab-simulator-115544415132.us-central1.run.app
 
-View Preview: https://youtu.be/owrrNu0Fdq8
+---
+
+## Video Preview 
+[![Demo video]( https://youtu.be/owrrNu0Fdq8)
+
+---
 
 A full-stack plant care app: Flutter web frontend + Flask/Python backend, deployed on Google Cloud Run.
 
