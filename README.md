@@ -6,8 +6,8 @@ https://plantlab-simulator-115544415132.us-central1.run.app
 ---
 
 ## Video Preview 
-## Video Preview
-[![Demo video](https://github.com/user-attachments/assets/7830e434-1b15-44c1-8b72-65de5b6c24ab)](https://youtu.be/owrrNu0Fdq8)
+[![Demo video](<img width="1052" height="590" alt="Screenshot 2026-03-25 at 1 44 32 PM" src="https://github.com/user-attachments/assets/ce97079b-474b-43c0-8516-387413c40471" />
+)](https://youtu.be/owrrNu0Fdq8)
 
 
 ---
